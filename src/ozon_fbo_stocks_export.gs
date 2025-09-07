@@ -1949,6 +1949,69 @@ function toNum_(v) {
 }
 
 /**
+ * Настраивает параметры отчёта WB API
+ */
+function configureWBReportParams() {
+  const ui = SpreadsheetApp.getUi();
+  
+  // Получаем текущие настройки
+  const properties = PropertiesService.getScriptProperties();
+  const currentParams = {
+    locale: properties.getProperty('WB_REPORT_LOCALE') || 'ru',
+    groupByBrand: properties.getProperty('WB_REPORT_GROUP_BY_BRAND') || 'false',
+    groupBySubject: properties.getProperty('WB_REPORT_GROUP_BY_SUBJECT') || 'false',
+    groupBySa: properties.getProperty('WB_REPORT_GROUP_BY_SA') || 'false',
+    groupByNm: properties.getProperty('WB_REPORT_GROUP_BY_NM') || 'true',
+    groupByBarcode: properties.getProperty('WB_REPORT_GROUP_BY_BARCODE') || 'false',
+    groupBySize: properties.getProperty('WB_REPORT_GROUP_BY_SIZE') || 'false',
+    filterPics: properties.getProperty('WB_REPORT_FILTER_PICS') || '0',
+    filterVolume: properties.getProperty('WB_REPORT_FILTER_VOLUME') || '0'
+  };
+  
+  let message = `Текущие настройки отчёта WB:\n\n`;
+  message += `Язык: ${currentParams.locale}\n`;
+  message += `Группировка по брендам: ${currentParams.groupByBrand}\n`;
+  message += `Группировка по предметам: ${currentParams.groupBySubject}\n`;
+  message += `Группировка по артикулам продавца: ${currentParams.groupBySa}\n`;
+  message += `Группировка по артикулам WB: ${currentParams.groupByNm}\n`;
+  message += `Группировка по баркодам: ${currentParams.groupByBarcode}\n`;
+  message += `Группировка по размерам: ${currentParams.groupBySize}\n`;
+  message += `Фильтр по фото: ${currentParams.filterPics}\n`;
+  message += `Фильтр по объёму: ${currentParams.filterVolume}\n\n`;
+  message += `Изменить настройки? (y/n)`;
+  
+  const response = ui.prompt('Настройка параметров отчёта WB', message, ui.ButtonSet.OK_CANCEL);
+  if (response.getSelectedButton() !== ui.Button.OK) return;
+  
+  if (response.getResponseText().toLowerCase() === 'y' || response.getResponseText().toLowerCase() === 'yes') {
+    // Запрашиваем новые настройки
+    const localeResponse = ui.prompt('Язык отчёта', 'Язык (ru/en/zh):', ui.ButtonSet.OK_CANCEL);
+    if (localeResponse.getSelectedButton() !== ui.Button.OK) return;
+    
+    const groupByNmResponse = ui.prompt('Группировка по артикулам WB', 'Группировка по артикулам WB (true/false):', ui.ButtonSet.OK_CANCEL);
+    if (groupByNmResponse.getSelectedButton() !== ui.Button.OK) return;
+    
+    const groupBySizeResponse = ui.prompt('Группировка по размерам', 'Группировка по размерам (true/false):', ui.ButtonSet.OK_CANCEL);
+    if (groupBySizeResponse.getSelectedButton() !== ui.Button.OK) return;
+    
+    // Сохраняем настройки
+    const newParams = {
+      locale: localeResponse.getResponseText().trim() || 'ru',
+      groupByNm: groupByNmResponse.getResponseText().trim() || 'true',
+      groupBySize: groupBySizeResponse.getResponseText().trim() || 'false'
+    };
+    
+    properties.setProperties({
+      'WB_REPORT_LOCALE': newParams.locale,
+      'WB_REPORT_GROUP_BY_NM': newParams.groupByNm,
+      'WB_REPORT_GROUP_BY_SIZE': newParams.groupBySize
+    });
+    
+    ui.alert('Успех', `Настройки отчёта WB сохранены:\n\nЯзык: ${newParams.locale}\nГруппировка по артикулам WB: ${newParams.groupByNm}\nГруппировка по размерам: ${newParams.groupBySize}`, ui.ButtonSet.OK);
+  }
+}
+
+/**
  * Настраивает параметры обработки лимитов запросов WB API
  */
 function configureWBRateLimits() {
