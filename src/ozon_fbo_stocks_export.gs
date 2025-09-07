@@ -936,34 +936,40 @@ function exportAllStoresStocks() {
     
     console.log(`Начинаем выгрузку остатков со всех магазинов (${stores.length} магазинов)...`);
     
-    const allStocks = [];
+    const originalActiveStore = getActiveStore();
+    let totalProcessed = 0;
     
     stores.forEach((store, index) => {
       try {
         console.log(`Обрабатываем магазин ${index + 1}/${stores.length}: ${store.name}`);
         
-        // Временно устанавливаем активный магазин
-        const originalActiveStore = getActiveStore();
+        // Устанавливаем активный магазин
         setActiveStore(store.id);
         
-        // Получаем данные о складах
-        const warehouses = getWarehouses();
-        console.log(`  Найдено складов: ${warehouses.length}`);
+        // Получаем остатки для текущего магазина
+        let storeStocks = fetchAllFboStocksV4();
         
-        // Получаем остатки по всем складам
-        warehouses.forEach(warehouse => {
-          const stocks = getFBOStocks(warehouse.warehouse_id);
-          stocks.forEach(stock => {
-            stock.warehouse_name = warehouse.name;
-            stock.warehouse_id = warehouse.warehouse_id;
-            stock.store_name = store.name; // Добавляем название магазина
-          });
-          allStocks.push(...stocks);
+        if (storeStocks.length === 0) {
+          console.log(`  v4 API не вернул данные, пробуем v3...`);
+          storeStocks = getFBOStocksV3();
+          
+          if (storeStocks.length === 0) {
+            console.log(`  v3 API не вернул данные, пробуем аналитику...`);
+            storeStocks = getFBOStocksAnalytics();
+          }
+        }
+        
+        // Добавляем название магазина к каждому товару
+        storeStocks.forEach(stock => {
+          stock.store_name = store.name;
         });
         
-        // Восстанавливаем активный магазин
-        if (originalActiveStore) {
-          setActiveStore(originalActiveStore.id);
+        console.log(`  Получено ${storeStocks.length} товаров для магазина "${store.name}"`);
+        
+        // Записываем в отдельный лист для этого магазина
+        if (storeStocks.length > 0) {
+          writeToGoogleSheets(storeStocks);
+          totalProcessed += storeStocks.length;
         }
         
         console.log(`  Магазин "${store.name}" обработан успешно`);
@@ -974,12 +980,14 @@ function exportAllStoresStocks() {
       }
     });
     
-    console.log(`Получено записей об остатках со всех магазинов: ${allStocks.length}`);
+    // Восстанавливаем активный магазин
+    if (originalActiveStore) {
+      setActiveStore(originalActiveStore.id);
+    }
     
-    // Записываем в Google Таблицы
-    writeToGoogleSheets(allStocks);
+    console.log(`Выгрузка со всех магазинов завершена! Всего обработано товаров: ${totalProcessed}`);
     
-    console.log('Выгрузка со всех магазинов завершена успешно!');
+    SpreadsheetApp.getUi().alert('Выгрузка завершена', `Обработано ${stores.length} магазинов, всего товаров: ${totalProcessed}`, SpreadsheetApp.getUi().ButtonSet.OK);
     
   } catch (error) {
     console.error('Ошибка при выгрузке со всех магазинов:', error);
