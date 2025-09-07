@@ -196,6 +196,14 @@ function setActiveStore(storeId) {
 }
 
 /**
+ * Устанавливает активный WB магазин
+ */
+function setActiveWBStore(storeId) {
+  const properties = PropertiesService.getScriptProperties();
+  properties.setProperty('ACTIVE_WB_STORE_ID', storeId);
+}
+
+/**
  * Добавляет новый магазин
  */
 function addNewStore() {
