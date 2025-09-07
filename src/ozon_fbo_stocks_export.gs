@@ -2451,6 +2451,73 @@ function testWBConnection() {
 }
 
 /**
+ * Тестирует Statistics API WB с разными периодами
+ */
+function testWBStatisticsAPIWithPeriods() {
+  try {
+    const config = getWBConfig();
+    
+    if (!config.API_KEY) {
+      SpreadsheetApp.getUi().alert('Ошибка', 'Не настроен API ключ для WB магазина!', SpreadsheetApp.getUi().ButtonSet.OK);
+      return;
+    }
+    
+    console.log('Тестируем WB Statistics API с разными периодами...');
+    console.log(`API Key: ${config.API_KEY.substring(0, 10)}...`);
+    
+    const today = new Date();
+    const periods = [
+      { name: '3 дня', days: 3 },
+      { name: '7 дней', days: 7 },
+      { name: '14 дней', days: 14 },
+      { name: '30 дней', days: 30 },
+      { name: '60 дней', days: 60 }
+    ];
+    
+    let results = [];
+    
+    for (const period of periods) {
+      const periodAgo = new Date(today.getTime() - period.days * 24 * 60 * 60 * 1000);
+      const dateTo = today.toISOString().split('T')[0];
+      const dateFrom = periodAgo.toISOString().split('T')[0];
+      
+      console.log(`\nТестируем период: ${period.name} (${dateFrom} - ${dateTo})`);
+      
+      try {
+        const reportData = wbGetReportDetailByPeriod_(config.API_KEY, dateFrom, dateTo);
+        const count = Array.isArray(reportData) ? reportData.length : 0;
+        
+        console.log(`✅ ${period.name}: ${count} записей`);
+        results.push(`${period.name}: ${count} записей`);
+        
+        // Если нашли данные, показываем первые записи
+        if (count > 0) {
+          console.log('Первые 2 записи:');
+          reportData.slice(0, 2).forEach((item, index) => {
+            console.log(`${index + 1}. nmId: ${item.nmId}, Артикул: ${item.supplierArticle}, Дата: ${item.sale_dt}`);
+          });
+          break; // Прерываем цикл, если нашли данные
+        }
+        
+        // Небольшая пауза между запросами
+        Utilities.sleep(1000);
+        
+      } catch (error) {
+        console.log(`❌ ${period.name}: Ошибка - ${error.message}`);
+        results.push(`${period.name}: Ошибка`);
+      }
+    }
+    
+    const message = `Результаты тестирования WB Statistics API:\n\n${results.join('\n')}`;
+    SpreadsheetApp.getUi().alert('Результаты тестирования', message, SpreadsheetApp.getUi().ButtonSet.OK);
+    
+  } catch (error) {
+    console.error('Ошибка тестирования WB Statistics API:', error);
+    SpreadsheetApp.getUi().alert('Ошибка', `Ошибка тестирования: ${error.message}`, SpreadsheetApp.getUi().ButtonSet.OK);
+  }
+}
+
+/**
  * Тестирует Statistics API WB
  */
 function testWBStatisticsAPI() {
