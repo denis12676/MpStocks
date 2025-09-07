@@ -241,6 +241,12 @@ function writeToGoogleSheets(stocks) {
  */
 function testOzonConnection() {
   try {
+    const config = getOzonConfig();
+    if (!config.CLIENT_ID || !config.API_KEY) {
+      console.error('Не настроены API ключи! Используйте saveOzonConfig() для настройки.');
+      return false;
+    }
+    
     const warehouses = getWarehouses();
     console.log('Подключение к Ozon API успешно!');
     console.log('Найденные склады:', warehouses);
