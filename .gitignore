@@ -1,5 +1,5 @@
 ﻿# Google Apps Script
-.clasp.json
+# .clasp.json - нужен для деплоя
 .claspignore
 
 # Logs
