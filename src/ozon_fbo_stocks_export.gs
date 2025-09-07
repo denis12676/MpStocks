@@ -703,6 +703,63 @@ function testOzonConnection() {
 }
 
 /**
+ * Детально анализирует ответ от v4 API
+ */
+function analyzeV4Response() {
+  const config = getOzonConfig();
+  if (!config.CLIENT_ID || !config.API_KEY) {
+    console.error('Не настроены API ключи!');
+    return;
+  }
+  
+  const warehouses = getWarehouses();
+  if (warehouses.length === 0) {
+    console.error('Нет доступных складов для тестирования');
+    return;
+  }
+  
+  const testWarehouseId = warehouses[0].warehouse_id;
+  console.log(`Анализируем ответ v4 API для склада: ${testWarehouseId}`);
+  
+  try {
+    const url = `${config.BASE_URL}/v4/product/info/stocks`;
+    console.log(`URL: ${url}`);
+    
+    const options = {
+      method: 'POST',
+      headers: {
+        'Client-Id': config.CLIENT_ID,
+        'Api-Key': config.API_KEY,
+        'Content-Type': 'application/json'
+      },
+      payload: JSON.stringify({
+        filter: {
+          warehouse_id: [testWarehouseId]
+        },
+        limit: 10
+      }),
+      muteHttpExceptions: true
+    };
+    
+    const response = UrlFetchApp.fetch(url, options);
+    const responseCode = response.getResponseCode();
+    const responseText = response.getContentText();
+    
+    console.log(`Response code: ${responseCode}`);
+    console.log(`Response text: ${responseText}`);
+    
+    if (responseCode === 200) {
+      const data = JSON.parse(responseText);
+      console.log('📋 Полная структура ответа:');
+      console.log(JSON.stringify(data, null, 2));
+    }
+    
+  } catch (error) {
+    console.error('Ошибка анализа v4 API:', error);
+  }
+}
+
+/**
  * Тестирует все доступные API endpoints для остатков
  */
 function testStocksEndpoints() {
