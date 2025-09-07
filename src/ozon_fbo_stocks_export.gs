@@ -84,6 +84,7 @@ function onOpen() {
     .addSubMenu(ui.createMenu('⚙️ Настройки')
       .addItem('📊 ID Google Таблицы', 'setSpreadsheetId')
       .addItem('🔍 Проверить подключение', 'testOzonConnection')
+      .addItem('🧪 Тест API endpoints', 'testStocksEndpoints')
       .addItem('📋 Показать настройки', 'showCurrentSettings'))
     .addSeparator()
     .addSubMenu(ui.createMenu('⏰ Автоматизация')
