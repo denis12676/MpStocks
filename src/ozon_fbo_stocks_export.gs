@@ -524,93 +524,69 @@ function getAllWarehouses() {
 }
 
 /**
- * Получает остатки товаров на конкретном складе FBO
+ * Получает остатки товаров через аналитику FBO
  */
-function getFBOStocks(warehouseId) {
+function getFBOStocksAnalytics(warehouseIds = []) {
   const config = getOzonConfig();
   
-  // Пробуем разные API endpoints для получения остатков
-  const apiEndpoints = [
-    '/v3/product/info/stocks',
-    '/v2/product/info/stocks', 
-    '/v1/product/info/stocks',
-    '/v4/product/info/stocks',
-    '/v1/product/stocks',
-    '/v2/product/stocks'
-  ];
-  
-  for (let i = 0; i < apiEndpoints.length; i++) {
-    try {
-      const url = `${config.BASE_URL}${apiEndpoints[i]}`;
-      console.log(`Пробуем endpoint: ${url}`);
-      
-      const options = {
-        method: 'POST',
-        headers: {
-          'Client-Id': config.CLIENT_ID,
-          'Api-Key': config.API_KEY,
-          'Content-Type': 'application/json'
-        },
-        payload: JSON.stringify({
-          filter: {
-            warehouse_id: [warehouseId]
-          },
-          limit: 1000
-        }),
-        muteHttpExceptions: true // Для получения полного ответа при ошибках
-      };
-      
-      const response = UrlFetchApp.fetch(url, options);
-      const responseCode = response.getResponseCode();
-      const responseText = response.getContentText();
-      
-      console.log(`Response code: ${responseCode}`);
-      
-      if (responseCode === 200) {
-        const data = JSON.parse(responseText);
-        console.log(`📋 Структура ответа от ${apiEndpoints[i]}:`, Object.keys(data));
-        
-        // Для v4 API данные находятся в data.items
-        if (data.items && Array.isArray(data.items)) {
-          console.log(`✅ Успешно получены остатки через ${apiEndpoints[i]} (v4 items)`);
-          return data.items;
-        }
-        // Для старых версий API
-        else if (data.result && data.result.items) {
-          console.log(`✅ Успешно получены остатки через ${apiEndpoints[i]} (result.items)`);
-          return data.result.items;
-        } else if (data.result && Array.isArray(data.result)) {
-          console.log(`✅ Успешно получены остатки через ${apiEndpoints[i]} (result массив)`);
-          return data.result;
-        } else if (data.result) {
-          console.log(`📋 Результат:`, typeof data.result, Object.keys(data.result));
-          // Пробуем разные варианты структуры
-          if (data.result.stocks) {
-            console.log(`✅ Успешно получены остатки через ${apiEndpoints[i]} (result.stocks)`);
-            return data.result.stocks;
-          } else if (data.result.products) {
-            console.log(`✅ Успешно получены остатки через ${apiEndpoints[i]} (result.products)`);
-            return data.result.products;
-          } else {
-            console.log(`⚠️ Неизвестная структура результата:`, data.result);
-          }
-        } else {
-          console.log(`⚠️ Нет полей items или result в ответе:`, Object.keys(data));
-        }
-      } else {
-        console.log(`❌ Ошибка ${responseCode} с ${apiEndpoints[i]}: ${responseText}`);
-      }
-      
-    } catch (error) {
-      console.log(`❌ Исключение с ${apiEndpoints[i]}: ${error.message}`);
-      if (i === apiEndpoints.length - 1) {
-        throw new Error(`Все API endpoints недоступны. Последняя ошибка: ${error.message}`);
-      }
+  try {
+    const url = `${config.BASE_URL}/v1/analytics/stocks`;
+    console.log(`Используем endpoint аналитики: ${url}`);
+    
+    const payload = {
+      skus: [] // Получаем все товары
+    };
+    
+    // Если указаны конкретные склады, добавляем фильтр
+    if (warehouseIds.length > 0) {
+      payload.warehouse_ids = warehouseIds;
     }
+    
+    const options = {
+      method: 'POST',
+      headers: {
+        'Client-Id': config.CLIENT_ID,
+        'Api-Key': config.API_KEY,
+        'Content-Type': 'application/json'
+      },
+      payload: JSON.stringify(payload),
+      muteHttpExceptions: true
+    };
+    
+    const response = UrlFetchApp.fetch(url, options);
+    const responseCode = response.getResponseCode();
+    const responseText = response.getContentText();
+    
+    console.log(`Response code: ${responseCode}`);
+    
+    if (responseCode === 200) {
+      const data = JSON.parse(responseText);
+      console.log(`📋 Структура ответа аналитики:`, Object.keys(data));
+      
+      if (data.items && Array.isArray(data.items)) {
+        console.log(`✅ Успешно получены остатки через аналитику: ${data.items.length} товаров`);
+        return data.items;
+      } else {
+        console.log(`⚠️ Нет поля items в ответе аналитики:`, Object.keys(data));
+        return [];
+      }
+    } else {
+      console.log(`❌ Ошибка ${responseCode} аналитики: ${responseText}`);
+      return [];
+    }
+    
+  } catch (error) {
+    console.log(`❌ Исключение аналитики: ${error.message}`);
+    return [];
   }
-  
-  console.log('⚠️ Ни один API endpoint не вернул данные об остатках');
-  return [];
+}
+
+/**
+ * Получает остатки товаров на конкретном складе (старый метод для совместимости)
+ */
+function getFBOStocks(warehouseId) {
+  // Используем новый метод аналитики
+  return getFBOStocksAnalytics([warehouseId]);
 }
 
 /**
