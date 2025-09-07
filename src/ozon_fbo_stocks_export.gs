@@ -1022,6 +1022,99 @@ function testOzonConnection() {
 }
 
 /**
+ * Показывает список листов магазинов
+ */
+function showStoreSheets() {
+  const config = getOzonConfig();
+  const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  const sheets = spreadsheet.getSheets();
+  
+  const storeSheets = sheets.filter(sheet => {
+    const sheetName = sheet.getName();
+    const stores = getStoresList();
+    return stores.some(store => sanitizeSheetName(store.name) === sheetName);
+  });
+  
+  if (storeSheets.length === 0) {
+    SpreadsheetApp.getUi().alert('Информация', 'Нет листов магазинов', SpreadsheetApp.getUi().ButtonSet.OK);
+    return;
+  }
+  
+  let message = 'Листы магазинов:\n\n';
+  storeSheets.forEach((sheet, index) => {
+    const rowCount = sheet.getLastRow() - 1; // -1 для заголовка
+    message += `${index + 1}. ${sheet.getName()} (${rowCount} товаров)\n`;
+  });
+  
+  SpreadsheetApp.getUi().alert('Листы магазинов', message, SpreadsheetApp.getUi().ButtonSet.OK);
+}
+
+/**
+ * Удаляет листы магазинов
+ */
+function deleteStoreSheets() {
+  const ui = SpreadsheetApp.getUi();
+  const confirm = ui.alert('Подтверждение', 'Удалить все листы магазинов?', ui.ButtonSet.YES_NO);
+  
+  if (confirm === ui.Button.YES) {
+    const config = getOzonConfig();
+    const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+    const sheets = spreadsheet.getSheets();
+    const stores = getStoresList();
+    
+    let deletedCount = 0;
+    
+    sheets.forEach(sheet => {
+      const sheetName = sheet.getName();
+      const isStoreSheet = stores.some(store => sanitizeSheetName(store.name) === sheetName);
+      
+      if (isStoreSheet) {
+        spreadsheet.deleteSheet(sheet);
+        deletedCount++;
+      }
+    });
+    
+    ui.alert('Успех', `Удалено листов: ${deletedCount}`, ui.ButtonSet.OK);
+  }
+}
+
+/**
+ * Переименовывает листы магазинов
+ */
+function renameStoreSheets() {
+  const ui = SpreadsheetApp.getUi();
+  const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  const sheets = spreadsheet.getSheets();
+  const stores = getStoresList();
+  
+  let renamedCount = 0;
+  
+  stores.forEach(store => {
+    const expectedSheetName = sanitizeSheetName(store.name);
+    const existingSheet = spreadsheet.getSheetByName(expectedSheetName);
+    
+    if (!existingSheet) {
+      // Ищем лист с неправильным названием
+      const oldSheet = sheets.find(sheet => {
+        const sheetName = sheet.getName();
+        return sheetName.includes(store.name) || store.name.includes(sheetName);
+      });
+      
+      if (oldSheet && oldSheet.getName() !== expectedSheetName) {
+        try {
+          oldSheet.setName(expectedSheetName);
+          renamedCount++;
+        } catch (error) {
+          console.error(`Ошибка переименования листа ${oldSheet.getName()}:`, error);
+        }
+      }
+    }
+  });
+  
+  ui.alert('Переименование завершено', `Переименовано листов: ${renamedCount}`, ui.ButtonSet.OK);
+}
+
+/**
  * Тестирует v4 API с пагинацией
  */
 function testV4Pagination() {
