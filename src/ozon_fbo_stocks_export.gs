@@ -1489,6 +1489,80 @@ function wbApiRequestWithRetry(url, options, maxRetries = null) {
 }
 
 /**
+ * Выгружает FBO остатки для активного WB магазина с увеличенными задержками
+ */
+function exportWBFBOStocksWithLongDelays() {
+  try {
+    const config = getWBConfig();
+    
+    if (!config.API_KEY) {
+      SpreadsheetApp.getUi().alert('Ошибка', 'Не настроен API ключ для WB магазина!', SpreadsheetApp.getUi().ButtonSet.OK);
+      return;
+    }
+    
+    console.log(`Начинаем выгрузку FBO остатков для WB магазина: ${config.STORE_NAME} (с увеличенными задержками)`);
+    
+    // Временно увеличиваем задержки для этого запроса
+    const originalMaxRetries = WB_RATE_LIMIT_MAX_RETRIES;
+    const originalBaseDelay = WB_RATE_LIMIT_BASE_DELAY_MS;
+    const originalMaxDelay = WB_RATE_LIMIT_MAX_DELAY_MS;
+    
+    // Устанавливаем более консервативные настройки
+    const properties = PropertiesService.getScriptProperties();
+    properties.setProperties({
+      'WB_RATE_LIMIT_MAX_RETRIES': '3',
+      'WB_RATE_LIMIT_BASE_DELAY_MS': '15000', // 15 секунд
+      'WB_RATE_LIMIT_MAX_DELAY_MS': '60000'   // 60 секунд
+    });
+    
+    try {
+      const taskId = wbCreateWarehouseRemainsReport_(config.API_KEY);
+      const downloadUrl = wbWaitReportAndGetUrl_(taskId, config.API_KEY);
+      const csv = wbDownloadReportCsv_(taskId, config.API_KEY);
+      const rows = parseCsv_(csv);
+      
+      if (rows.length === 0) {
+        console.log('Нет данных для записи');
+        return;
+      }
+      
+      // Обрабатываем данные
+      const headerMap = normalizeHeaderMap_(rows[0]);
+      const data = rows.slice(1).map(r => ({
+        nmId: pick_(r, headerMap.nmId),
+        supplierArticle: pick_(r, headerMap.supplierArticle),
+        barcode: pick_(r, headerMap.barcode),
+        techSize: pick_(r, headerMap.techSize),
+        warehouseName: pick_(r, headerMap.warehouseName),
+        warehouseId: pick_(r, headerMap.warehouseId),
+        quantity: toNum_(pick_(r, headerMap.quantity)),
+        reserve: toNum_(pick_(r, headerMap.reserve)),
+        inWayToClient: toNum_(pick_(r, headerMap.inWayToClient)),
+        inWayFromClient: toNum_(pick_(r, headerMap.inWayFromClient)),
+        store_name: config.STORE_NAME
+      }));
+      
+      // Записываем в Google Sheets
+      writeWBToGoogleSheets(data);
+      
+      console.log(`Выгрузка WB FBO остатков завершена! Записано товаров: ${data.length}`);
+      
+    } finally {
+      // Восстанавливаем оригинальные настройки
+      properties.setProperties({
+        'WB_RATE_LIMIT_MAX_RETRIES': originalMaxRetries.toString(),
+        'WB_RATE_LIMIT_BASE_DELAY_MS': originalBaseDelay.toString(),
+        'WB_RATE_LIMIT_MAX_DELAY_MS': originalMaxDelay.toString()
+      });
+    }
+    
+  } catch (error) {
+    console.error('Ошибка при выгрузке WB FBO остатков:', error);
+    SpreadsheetApp.getUi().alert('Ошибка', `Ошибка выгрузки: ${error.message}`, SpreadsheetApp.getUi().ButtonSet.OK);
+  }
+}
+
+/**
  * Выгружает FBO остатки для активного WB магазина
  */
 function exportWBFBOStocks() {
