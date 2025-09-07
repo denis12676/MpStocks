@@ -1546,21 +1546,23 @@ function wbCreateWarehouseRemainsReport_(apiKey) {
   const body = JSON.parse(resp.getContentText() || '{}');
   console.log('WB API Response:', JSON.stringify(body, null, 2));
   
-  // Пробуем разные варианты получения reportId
-  const reportId = body?.data?.id || 
-                   body?.data?.reportId || 
-                   body?.reportId || 
-                   body?.id ||
-                   body?.requestId ||
-                   body?.data?.requestId;
+  // Пробуем разные варианты получения taskId (новый API возвращает taskId вместо reportId)
+  const taskId = body?.data?.taskId || 
+                 body?.data?.id || 
+                 body?.data?.reportId || 
+                 body?.reportId || 
+                 body?.id ||
+                 body?.requestId ||
+                 body?.data?.requestId ||
+                 body?.taskId;
   
-  if (!reportId) {
-    console.error('Не найдено поле reportId в ответе:', body);
-    throw new Error(`WB create report: не получили reportId. Ответ: ${JSON.stringify(body)}`);
+  if (!taskId) {
+    console.error('Не найдено поле taskId в ответе:', body);
+    throw new Error(`WB create report: не получили taskId. Ответ: ${JSON.stringify(body)}`);
   }
   
-  console.log(`Получен reportId: ${reportId}`);
-  return reportId;
+  console.log(`Получен taskId: ${taskId}`);
+  return taskId;
 }
 
 /**
