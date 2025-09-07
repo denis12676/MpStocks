@@ -509,7 +509,110 @@ function getAllWarehouses() {
 }
 
 /**
- * Получает остатки товаров через v3 API
+ * Получает все FBO остатки с пагинацией через v4 API
+ */
+function fetchAllFboStocksV4() {
+  const config = getOzonConfig();
+  const headers = {
+    'Client-Id': config.CLIENT_ID,
+    'Api-Key': config.API_KEY
+  };
+  
+  let lastId = '';
+  const result = [];
+  let pageCount = 0;
+  const PAGE_LIMIT = 1000;
+
+  console.log('Начинаем пагинацию по v4 API...');
+
+  do {
+    pageCount++;
+    console.log(`Обрабатываем страницу ${pageCount}...`);
+    
+    const payload = {
+      filter: {
+        visibility: 'ALL' // берём все видимости
+      },
+      limit: PAGE_LIMIT,
+      last_id: lastId
+    };
+
+    const resp = callOzonAPI('/v4/product/info/stocks', payload, headers);
+
+    // Обрабатываем разные варианты структуры ответа
+    let items = [];
+    if (resp && resp.result && Array.isArray(resp.result.items)) {
+      items = resp.result.items;
+      lastId = resp.result.last_id || '';
+    } else if (resp && Array.isArray(resp.items)) {
+      items = resp.items;
+      lastId = resp.last_id || '';
+    } else if (resp && Array.isArray(resp.result)) {
+      items = resp.result;
+      lastId = resp.last_id || '';
+    } else {
+      items = [];
+      lastId = '';
+    }
+
+    console.log(`Получено ${items.length} товаров на странице ${pageCount}`);
+
+    // Трансформируем: оставляем только FBO остатки
+    for (const it of items) {
+      const productId = it.product_id || it.id || '';
+      const offerId = it.offer_id || '';
+      const sku = it.sku || '';
+      const stocks = Array.isArray(it.stocks) ? it.stocks : [];
+      const fbo = stocks.find(s => (s.type || '').toLowerCase() === 'fbo');
+
+      // В v4 иногда добавляют детали склада: s.warehouse_ids (массив).
+      const warehouseIds = fbo && Array.isArray(fbo.warehouse_ids) ? fbo.warehouse_ids.join(',') : '';
+
+      if (fbo) { // Добавляем только товары с FBO остатками
+        result.push({
+          product_id: productId,
+          offer_id: offerId,
+          sku: sku,
+          name: it.name || '',
+          fbo_present: fbo ? Number(fbo.present || 0) : 0,
+          fbo_reserved: fbo ? Number(fbo.reserved || 0) : 0,
+          warehouse_ids: warehouseIds,
+          store_name: config.STORE_NAME || 'Неизвестный магазин'
+        });
+      }
+    }
+
+  } while (lastId);
+
+  console.log(`Пагинация завершена. Всего страниц: ${pageCount}, FBO товаров: ${result.length}`);
+  return result;
+}
+
+/**
+ * Низкоуровневый запрос к Ozon Seller API
+ */
+function callOzonAPI(path, body, headers) {
+  const config = getOzonConfig();
+  const url = config.BASE_URL + path;
+  
+  const resp = UrlFetchApp.fetch(url, {
+    method: 'post',
+    muteHttpExceptions: true,
+    contentType: 'application/json; charset=utf-8',
+    headers: headers,
+    payload: JSON.stringify(body)
+  });
+
+  const code = resp.getResponseCode();
+  if (code < 200 || code >= 300) {
+    throw new Error(`Ozon API ${path} вернул код ${code}: ${resp.getContentText()}`);
+  }
+  const text = resp.getContentText();
+  return text ? JSON.parse(text) : {};
+}
+
+/**
+ * Получает остатки товаров через v3 API (резервный метод)
  */
 function getFBOStocksV3(warehouseIds = []) {
   const config = getOzonConfig();
