@@ -1530,13 +1530,11 @@ function exportAllWBStoresStocks() {
 function wbCreateWarehouseRemainsReport_(apiKey) {
   const url = WB_ANALYTICS_HOST + '/api/v1/warehouse_remains';
   const resp = UrlFetchApp.fetch(url, {
-    method: 'post',
+    method: 'get',
     muteHttpExceptions: true,
-    contentType: 'application/json; charset=utf-8',
     headers: {
       'Authorization': apiKey
-    },
-    payload: JSON.stringify({})
+    }
   });
   
   const code = resp.getResponseCode();
