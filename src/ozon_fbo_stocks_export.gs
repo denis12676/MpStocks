@@ -242,6 +242,46 @@ function addNewStore() {
 }
 
 /**
+ * Добавляет новый WB магазин
+ */
+function addNewWBStore() {
+  const ui = SpreadsheetApp.getUi();
+  
+  // Запрашиваем данные магазина
+  const storeName = ui.prompt('Добавить WB магазин', 'Введите название магазина:', ui.ButtonSet.OK_CANCEL);
+  if (storeName.getSelectedButton() !== ui.Button.OK) return;
+  
+  const apiKey = ui.prompt('Добавить WB магазин', 'Введите API Key:', ui.ButtonSet.OK_CANCEL);
+  if (apiKey.getSelectedButton() !== ui.Button.OK) return;
+  
+  // Проверяем что все поля заполнены
+  if (!storeName.getResponseText().trim() || !apiKey.getResponseText().trim()) {
+    ui.alert('Ошибка', 'Все поля должны быть заполнены!', ui.ButtonSet.OK);
+    return;
+  }
+  
+  // Создаем новый магазин
+  const newStore = {
+    id: Utilities.getUuid(),
+    name: storeName.getResponseText().trim(),
+    api_key: apiKey.getResponseText().trim(),
+    created_at: new Date().toISOString()
+  };
+  
+  // Добавляем в список
+  const stores = getWBStoresList();
+  stores.push(newStore);
+  saveWBStoresList(stores);
+  
+  // Если это первый магазин, делаем его активным
+  if (stores.length === 1) {
+    setActiveWBStore(newStore.id);
+  }
+  
+  ui.alert('Успех', `WB магазин "${newStore.name}" добавлен!`, ui.ButtonSet.OK);
+}
+
+/**
  * Показывает список магазинов
  */
 function showStoresList() {
