@@ -38,6 +38,31 @@ function getOzonConfig() {
 }
 
 /**
+ * Получает конфигурацию WB из PropertiesService
+ */
+function getWBConfig() {
+  const properties = PropertiesService.getScriptProperties();
+  
+  // Получаем из активного WB магазина
+  const activeStore = getActiveWBStore();
+  
+  if (activeStore) {
+    return {
+      API_KEY: activeStore.api_key,
+      SPREADSHEET_ID: properties.getProperty('GOOGLE_SPREADSHEET_ID'),
+      STORE_NAME: activeStore.name
+    };
+  }
+  
+  // Fallback на старые настройки
+  return {
+    API_KEY: properties.getProperty('WB_API_KEY'),
+    SPREADSHEET_ID: properties.getProperty('GOOGLE_SPREADSHEET_ID'),
+    STORE_NAME: 'Legacy WB Store'
+  };
+}
+
+/**
  * Сохраняет настройки в PropertiesService
  */
 function saveOzonConfig(clientId, apiKey, spreadsheetId) {
