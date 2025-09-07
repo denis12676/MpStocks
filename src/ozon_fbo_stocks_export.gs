@@ -74,6 +74,7 @@ function onOpen() {
     .addItem('📊 Выгрузить все остатки (активный магазин)', 'exportFBOStocks')
     .addItem('📊 Выгрузить только FBO остатки', 'exportOnlyFBOStocks')
     .addItem('📊 Выгрузить остатки (все магазины)', 'exportAllStoresStocks')
+    .addItem('🚀 Тест v4 API с пагинацией', 'testV4Pagination')
     .addSeparator()
     .addSubMenu(ui.createMenu('🏪 Управление магазинами')
       .addItem('➕ Добавить магазин', 'addNewStore')
