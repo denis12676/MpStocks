@@ -2533,12 +2533,12 @@ function testWBStatisticsAPI() {
     console.log('Тестируем WB Statistics API...');
     console.log(`API Key: ${config.API_KEY.substring(0, 10)}...`);
     
-    // Получаем даты (последние 3 дня для теста)
+    // Получаем даты (последние 7 дней для теста)
     const today = new Date();
-    const threeDaysAgo = new Date(today.getTime() - 3 * 24 * 60 * 60 * 1000);
+    const weekAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
     
     const dateTo = today.toISOString().split('T')[0]; // YYYY-MM-DD
-    const dateFrom = threeDaysAgo.toISOString().split('T')[0]; // YYYY-MM-DD
+    const dateFrom = weekAgo.toISOString().split('T')[0]; // YYYY-MM-DD
     
     console.log(`Тестовый период: с ${dateFrom} по ${dateTo}`);
     
