@@ -485,6 +485,7 @@ function writeToGoogleSheets(stocks) {
   
   // Заголовки
   const headers = [
+    'Магазин',
     'SKU',
     'Название товара',
     'Артикул',
