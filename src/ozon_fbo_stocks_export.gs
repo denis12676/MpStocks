@@ -1544,12 +1544,22 @@ function wbCreateWarehouseRemainsReport_(apiKey) {
   }
   
   const body = JSON.parse(resp.getContentText() || '{}');
-  const reportId = body?.data?.id || body?.reportId || body?.id;
+  console.log('WB API Response:', JSON.stringify(body, null, 2));
+  
+  // Пробуем разные варианты получения reportId
+  const reportId = body?.data?.id || 
+                   body?.data?.reportId || 
+                   body?.reportId || 
+                   body?.id ||
+                   body?.requestId ||
+                   body?.data?.requestId;
   
   if (!reportId) {
-    throw new Error('WB create report: не получили reportId');
+    console.error('Не найдено поле reportId в ответе:', body);
+    throw new Error(`WB create report: не получили reportId. Ответ: ${JSON.stringify(body)}`);
   }
   
+  console.log(`Получен reportId: ${reportId}`);
   return reportId;
 }
 
