@@ -1889,6 +1889,90 @@ function testWBConnection() {
 }
 
 /**
+ * Тестирует новый WB API с taskId для отчёта "Warehouses Remains"
+ */
+function testWBTaskIdAPI() {
+  try {
+    const config = getWBConfig();
+    
+    if (!config.API_KEY) {
+      SpreadsheetApp.getUi().alert('Ошибка', 'Не настроен API ключ для WB магазина!', SpreadsheetApp.getUi().ButtonSet.OK);
+      return;
+    }
+    
+    console.log('Тестируем новый WB API с taskId...');
+    console.log(`API Key: ${config.API_KEY.substring(0, 10)}...`);
+    
+    // Тест 1: Создание отчёта
+    console.log('1. Создаём отчёт...');
+    const taskId = wbCreateWarehouseRemainsReport_(config.API_KEY);
+    console.log(`✅ Получен taskId: ${taskId}`);
+    
+    // Тест 2: Проверка статуса отчёта
+    console.log('2. Проверяем статус отчёта...');
+    let attempts = 0;
+    const maxAttempts = 5;
+    
+    while (attempts < maxAttempts) {
+      attempts++;
+      console.log(`Попытка ${attempts}/${maxAttempts}...`);
+      
+      const url = WB_ANALYTICS_HOST + '/api/v1/warehouse_remains';
+      const resp = UrlFetchApp.fetch(url + '?id=' + encodeURIComponent(taskId), {
+        method: 'get',
+        muteHttpExceptions: true,
+        headers: {
+          'Authorization': config.API_KEY
+        }
+      });
+      
+      if (resp.getResponseCode() === 200) {
+        const body = JSON.parse(resp.getContentText() || '{}');
+        console.log(`✅ Статус отчёта:`, JSON.stringify(body, null, 2));
+        
+        const status = (body?.data?.status || body?.status || '').toLowerCase();
+        console.log(`Статус: ${status}`);
+        
+        if (status === 'ready' || status === 'done' || status === 'success') {
+          console.log('✅ Отчёт готов!');
+          
+          // Тест 3: Скачивание отчёта
+          console.log('3. Скачиваем отчёт...');
+          const csv = wbDownloadReportCsv_(taskId, config.API_KEY);
+          console.log(`✅ Отчёт скачан, размер: ${csv.length} символов`);
+          
+          // Показываем первые строки
+          const lines = csv.split('\n');
+          console.log(`Первые 3 строки отчёта:`);
+          lines.slice(0, 3).forEach((line, index) => {
+            console.log(`${index + 1}: ${line}`);
+          });
+          
+          SpreadsheetApp.getUi().alert('Успех', `Тест WB API с taskId прошёл успешно!\nTaskId: ${taskId}\nРазмер отчёта: ${csv.length} символов`, SpreadsheetApp.getUi().ButtonSet.OK);
+          return;
+        } else if (status === 'failed' || status === 'error') {
+          throw new Error(`Отчёт завершился с ошибкой: ${status}`);
+        } else {
+          console.log(`Отчёт ещё обрабатывается (статус: ${status}), ждём...`);
+          if (attempts < maxAttempts) {
+            Utilities.sleep(3000); // Ждём 3 секунды
+          }
+        }
+      } else {
+        console.log(`❌ Ошибка HTTP ${resp.getResponseCode()}: ${resp.getContentText()}`);
+      }
+    }
+    
+    console.log('⚠️ Отчёт не готов за отведённое время, но API работает');
+    SpreadsheetApp.getUi().alert('Частичный успех', `WB API с taskId работает!\nTaskId: ${taskId}\nОтчёт ещё обрабатывается`, SpreadsheetApp.getUi().ButtonSet.OK);
+    
+  } catch (error) {
+    console.error('Ошибка тестирования WB API с taskId:', error);
+    SpreadsheetApp.getUi().alert('Ошибка', `Ошибка тестирования: ${error.message}`, SpreadsheetApp.getUi().ButtonSet.OK);
+  }
+}
+
+/**
  * Тестирует v4 API с пагинацией
  */
 function testV4Pagination() {
