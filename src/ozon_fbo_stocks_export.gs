@@ -1400,6 +1400,7 @@ function renameStoreSheets() {
 // ==================== WB API ФУНКЦИИ ====================
 
 const WB_ANALYTICS_HOST = 'https://seller-analytics-api.wildberries.ru';
+const WB_STATISTICS_HOST = 'https://statistics-api.wildberries.ru';
 const WB_REPORT_TIMEOUT_MS = 6 * 60 * 1000; // ждать до 6 минут
 const WB_REPORT_POLL_INTERVAL_MS = 4000;
 
