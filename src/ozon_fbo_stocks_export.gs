@@ -82,31 +82,45 @@ function getWarehouses() {
  * Получает остатки товаров на конкретном складе FBO
  */
 function getFBOStocks(warehouseId) {
-  const url = `${OZON_CONFIG.BASE_URL}/v2/product/info/stocks`;
+  // Пробуем разные версии API
+  const apiVersions = ['/v2/product/info/stocks', '/v1/product/info/stocks', '/v3/product/info/stocks'];
   
-  const options = {
-    method: 'POST',
-    headers: {
-      'Client-Id': OZON_CONFIG.CLIENT_ID,
-      'Api-Key': OZON_CONFIG.API_KEY,
-      'Content-Type': 'application/json'
-    },
-    payload: JSON.stringify({
-      filter: {
-        warehouse_id: [warehouseId]
-      },
-      limit: 1000 // Максимум записей за раз
-    })
-  };
-  
-  const response = UrlFetchApp.fetch(url, options);
-  const data = JSON.parse(response.getContentText());
-  
-  if (!data.result) {
-    throw new Error(`Ошибка получения остатков для склада ${warehouseId}: ` + JSON.stringify(data));
+  for (let i = 0; i < apiVersions.length; i++) {
+    try {
+      const url = `${OZON_CONFIG.BASE_URL}${apiVersions[i]}`;
+      
+      const options = {
+        method: 'POST',
+        headers: {
+          'Client-Id': OZON_CONFIG.CLIENT_ID,
+          'Api-Key': OZON_CONFIG.API_KEY,
+          'Content-Type': 'application/json'
+        },
+        payload: JSON.stringify({
+          filter: {
+            warehouse_id: [warehouseId]
+          },
+          limit: 1000
+        })
+      };
+      
+      const response = UrlFetchApp.fetch(url, options);
+      const data = JSON.parse(response.getContentText());
+      
+      if (data.result && data.result.items) {
+        console.log(`Успешно получены остатки через ${apiVersions[i]}`);
+        return data.result.items;
+      }
+      
+    } catch (error) {
+      console.log(`Ошибка с ${apiVersions[i]}: ${error.message}`);
+      if (i === apiVersions.length - 1) {
+        throw new Error(`Все версии API недоступны. Последняя ошибка: ${error.message}`);
+      }
+    }
   }
   
-  return data.result.items || [];
+  return [];
 }
 
 /**
