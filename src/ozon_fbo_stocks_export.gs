@@ -1400,6 +1400,11 @@ const WB_ANALYTICS_HOST = 'https://seller-analytics-api.wildberries.ru';
 const WB_REPORT_TIMEOUT_MS = 6 * 60 * 1000; // ждать до 6 минут
 const WB_REPORT_POLL_INTERVAL_MS = 4000;
 
+// Настройки для обработки лимитов запросов
+const WB_RATE_LIMIT_MAX_RETRIES = 5; // максимум попыток при 429 ошибке
+const WB_RATE_LIMIT_BASE_DELAY_MS = 2000; // базовая задержка 2 секунды
+const WB_RATE_LIMIT_MAX_DELAY_MS = 30000; // максимальная задержка 30 секунд
+
 /**
  * Выгружает FBO остатки для активного WB магазина
  */
