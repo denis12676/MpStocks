@@ -83,6 +83,7 @@ function onOpen() {
     .addSeparator()
     .addSubMenu(ui.createMenu('⚙️ Настройки')
       .addItem('📊 ID Google Таблицы', 'setSpreadsheetId')
+      .addItem('📊 Установить текущую таблицу', 'setCurrentSpreadsheetId')
       .addItem('🔍 Проверить подключение', 'testOzonConnection')
       .addItem('🧪 Тест API endpoints', 'testStocksEndpoints')
       .addItem('📋 Показать настройки', 'showCurrentSettings'))
