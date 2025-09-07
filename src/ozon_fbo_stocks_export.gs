@@ -1673,59 +1673,8 @@ function wbCreateWarehouseRemainsReportWithParams_(apiKey, params = {}) {
  * Создает отчёт "Warehouses Remains Report" в WB (упрощённая версия)
  */
 function wbCreateWarehouseRemainsReport_(apiKey) {
-  // Формируем URL с параметрами согласно документации API
-  const baseUrl = WB_ANALYTICS_HOST + '/api/v1/warehouse_remains';
-  const params = new URLSearchParams({
-    locale: 'ru',           // Язык полей ответа
-    groupByBrand: 'false',  // Разбивка по брендам
-    groupBySubject: 'false', // Разбивка по предметам
-    groupBySa: 'false',     // Разбивка по артикулам продавца
-    groupByNm: 'true',      // Разбивка по артикулам WB (включаем для получения поля volume)
-    groupByBarcode: 'false', // Разбивка по баркодам
-    groupBySize: 'false',   // Разбивка по размерам
-    filterPics: '0',        // Не применять фильтр по фото
-    filterVolume: '0'       // Не применять фильтр по объёму
-  });
-  
-  const url = `${baseUrl}?${params.toString()}`;
-  
-  const options = {
-    method: 'get',
-    muteHttpExceptions: true,
-    headers: {
-      'Authorization': apiKey
-    }
-  };
-  
-  console.log('Создаём отчёт WB...');
-  console.log(`URL: ${url}`);
-  const resp = wbApiRequestWithRetry(url, options);
-  
-  const code = resp.getResponseCode();
-  if (code < 200 || code >= 300) {
-    throw new Error(`WB create report: HTTP ${code} — ${resp.getContentText()}`);
-  }
-  
-  const body = JSON.parse(resp.getContentText() || '{}');
-  console.log('WB API Response:', JSON.stringify(body, null, 2));
-  
-  // Пробуем разные варианты получения taskId (новый API возвращает taskId вместо reportId)
-  const taskId = body?.data?.taskId || 
-                 body?.data?.id || 
-                 body?.data?.reportId || 
-                 body?.reportId || 
-                 body?.id ||
-                 body?.requestId ||
-                 body?.data?.requestId ||
-                 body?.taskId;
-  
-  if (!taskId) {
-    console.error('Не найдено поле taskId в ответе:', body);
-    throw new Error(`WB create report: не получили taskId. Ответ: ${JSON.stringify(body)}`);
-  }
-  
-  console.log(`✅ Получен taskId: ${taskId}`);
-  return taskId;
+  // Используем функцию с параметрами по умолчанию
+  return wbCreateWarehouseRemainsReportWithParams_(apiKey);
 }
 
 /**
