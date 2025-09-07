@@ -1601,13 +1601,16 @@ function exportAllWBStoresStocks() {
  */
 function wbCreateWarehouseRemainsReport_(apiKey) {
   const url = WB_ANALYTICS_HOST + '/api/v1/warehouse_remains';
-  const resp = UrlFetchApp.fetch(url, {
+  const options = {
     method: 'get',
     muteHttpExceptions: true,
     headers: {
       'Authorization': apiKey
     }
-  });
+  };
+  
+  console.log('Создаём отчёт WB...');
+  const resp = wbApiRequestWithRetry(url, options);
   
   const code = resp.getResponseCode();
   if (code < 200 || code >= 300) {
@@ -1632,7 +1635,7 @@ function wbCreateWarehouseRemainsReport_(apiKey) {
     throw new Error(`WB create report: не получили taskId. Ответ: ${JSON.stringify(body)}`);
   }
   
-  console.log(`Получен taskId: ${taskId}`);
+  console.log(`✅ Получен taskId: ${taskId}`);
   return taskId;
 }
 
