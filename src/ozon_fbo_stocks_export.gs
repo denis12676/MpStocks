@@ -384,8 +384,13 @@ function exportFBOStocks() {
     
     console.log(`Начинаем выгрузку остатков FBO для магазина: ${config.STORE_NAME}...`);
     
-    // Получаем остатки через аналитику FBO (без дублирования)
-    const allStocks = getFBOStocksAnalytics();
+    // Пробуем сначала v3 API, затем аналитику как резерв
+    let allStocks = getFBOStocksV3();
+    
+    if (allStocks.length === 0) {
+      console.log('v3 API не вернул данные, пробуем аналитику...');
+      allStocks = getFBOStocksAnalytics();
+    }
     
     console.log(`Получено записей об остатках: ${allStocks.length}`);
     
