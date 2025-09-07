@@ -2450,6 +2450,63 @@ function testWBConnection() {
 }
 
 /**
+ * Тестирует Statistics API WB
+ */
+function testWBStatisticsAPI() {
+  try {
+    const config = getWBConfig();
+    
+    if (!config.API_KEY) {
+      SpreadsheetApp.getUi().alert('Ошибка', 'Не настроен API ключ для WB магазина!', SpreadsheetApp.getUi().ButtonSet.OK);
+      return;
+    }
+    
+    console.log('Тестируем WB Statistics API...');
+    console.log(`API Key: ${config.API_KEY.substring(0, 10)}...`);
+    
+    // Получаем даты (последние 3 дня для теста)
+    const today = new Date();
+    const threeDaysAgo = new Date(today.getTime() - 3 * 24 * 60 * 60 * 1000);
+    
+    const dateTo = today.toISOString().split('T')[0]; // YYYY-MM-DD
+    const dateFrom = threeDaysAgo.toISOString().split('T')[0]; // YYYY-MM-DD
+    
+    console.log(`Тестовый период: с ${dateFrom} по ${dateTo}`);
+    
+    // Тестируем API
+    const reportData = wbGetReportDetailByPeriod_(config.API_KEY, dateFrom, dateTo);
+    
+    if (!reportData || !Array.isArray(reportData)) {
+      console.log('Нет данных в отчёте');
+      SpreadsheetApp.getUi().alert('Информация', 'Нет данных в отчёте за указанный период', SpreadsheetApp.getUi().ButtonSet.OK);
+      return;
+    }
+    
+    console.log(`✅ Получено записей: ${reportData.length}`);
+    
+    // Показываем первые записи
+    if (reportData.length > 0) {
+      console.log('Первые 3 записи:');
+      reportData.slice(0, 3).forEach((item, index) => {
+        console.log(`${index + 1}. nmId: ${item.nmId}, Артикул: ${item.supplierArticle}, Дата: ${item.sale_dt}`);
+      });
+    }
+    
+    SpreadsheetApp.getUi().alert('Успех', `WB Statistics API работает!\nЗаписей: ${reportData.length}\nПериод: ${dateFrom} - ${dateTo}`, SpreadsheetApp.getUi().ButtonSet.OK);
+    
+  } catch (error) {
+    console.error('Ошибка тестирования WB Statistics API:', error);
+    
+    // Если это ошибка лимита запросов, показываем специальное сообщение
+    if (error.message.includes('429') || error.message.includes('Too Many Requests')) {
+      SpreadsheetApp.getUi().alert('Лимит запросов', `Обнаружена ошибка лимита запросов WB Statistics API.\n\nЭто нормально - система автоматически обработает такие ошибки с повторными попытками.\n\nОшибка: ${error.message}`, SpreadsheetApp.getUi().ButtonSet.OK);
+    } else {
+      SpreadsheetApp.getUi().alert('Ошибка', `Ошибка тестирования: ${error.message}`, SpreadsheetApp.getUi().ButtonSet.OK);
+    }
+  }
+}
+
+/**
  * Тестирует новый WB API с taskId для отчёта "Warehouses Remains"
  */
 function testWBTaskIdAPI() {
