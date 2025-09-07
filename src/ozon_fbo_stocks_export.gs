@@ -123,11 +123,38 @@ function getStoresList() {
 }
 
 /**
+ * Получает список всех WB магазинов
+ */
+function getWBStoresList() {
+  const properties = PropertiesService.getScriptProperties();
+  const storesJson = properties.getProperty('WB_STORES');
+  
+  if (!storesJson) {
+    return [];
+  }
+  
+  try {
+    return JSON.parse(storesJson);
+  } catch (error) {
+    console.error('Ошибка парсинга списка WB магазинов:', error);
+    return [];
+  }
+}
+
+/**
  * Сохраняет список магазинов
  */
 function saveStoresList(stores) {
   const properties = PropertiesService.getScriptProperties();
   properties.setProperty('OZON_STORES', JSON.stringify(stores));
+}
+
+/**
+ * Сохраняет список WB магазинов
+ */
+function saveWBStoresList(stores) {
+  const properties = PropertiesService.getScriptProperties();
+  properties.setProperty('WB_STORES', JSON.stringify(stores));
 }
 
 /**
