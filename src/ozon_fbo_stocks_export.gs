@@ -1413,9 +1413,9 @@ function exportWBFBOStocks() {
     
     console.log(`Начинаем выгрузку FBO остатков для WB магазина: ${config.STORE_NAME}`);
     
-    const reportId = wbCreateWarehouseRemainsReport_(config.API_KEY);
-    const downloadUrl = wbWaitReportAndGetUrl_(reportId, config.API_KEY);
-    const csv = wbDownloadReportCsv_(downloadUrl, config.API_KEY);
+    const taskId = wbCreateWarehouseRemainsReport_(config.API_KEY);
+    const downloadUrl = wbWaitReportAndGetUrl_(taskId, config.API_KEY);
+    const csv = wbDownloadReportCsv_(taskId, config.API_KEY);
     const rows = parseCsv_(csv);
     
     if (rows.length === 0) {
@@ -1475,9 +1475,9 @@ function exportAllWBStoresStocks() {
         setActiveWBStore(store.id);
         
         // Получаем остатки для текущего магазина
-        const reportId = wbCreateWarehouseRemainsReport_(store.api_key);
-        const downloadUrl = wbWaitReportAndGetUrl_(reportId, store.api_key);
-        const csv = wbDownloadReportCsv_(downloadUrl, store.api_key);
+        const taskId = wbCreateWarehouseRemainsReport_(store.api_key);
+        const downloadUrl = wbWaitReportAndGetUrl_(taskId, store.api_key);
+        const csv = wbDownloadReportCsv_(taskId, store.api_key);
         const rows = parseCsv_(csv);
         
         if (rows.length > 0) {
