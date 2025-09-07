@@ -634,8 +634,8 @@ function writeToGoogleSheets(stocks) {
     if (stock.stocks && Array.isArray(stock.stocks)) {
       // v4 API - у товара есть массив stocks
       stock.stocks.forEach(stockItem => {
-        // Фильтруем только FBO остатки
-        if (stockItem.type === 'fbo') {
+        // Показываем и FBO и FBS остатки
+        if (stockItem.type === 'fbo' || stockItem.type === 'fbs') {
           rows.push([
             stock.store_name || config.STORE_NAME || 'Неизвестный магазин',
             stock.offer_id || '',
@@ -643,6 +643,8 @@ function writeToGoogleSheets(stocks) {
             stock.article || '',
             stockItem.warehouse_ids && stockItem.warehouse_ids.length > 0 ? stockItem.warehouse_ids[0] : '',
             stock.warehouse_name || '',
+            stock.warehouse_type || '',
+            stockItem.type.toUpperCase() || '',
             stockItem.present || 0,
             stockItem.reserved || 0,
             (stockItem.present || 0) - (stockItem.reserved || 0), // available = present - reserved
@@ -659,6 +661,8 @@ function writeToGoogleSheets(stocks) {
         stock.article || '',
         stock.warehouse_id || '',
         stock.warehouse_name || '',
+        stock.warehouse_type || '',
+        'FBO', // Предполагаем FBO для старой структуры
         stock.present || 0,
         stock.reserved || 0,
         stock.available || 0,
