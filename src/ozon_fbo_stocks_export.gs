@@ -704,29 +704,58 @@ function writeToGoogleSheets(stocks) {
   const rows = [];
   
   stocks.forEach(stock => {
-    // API аналитики возвращает структуру с полной информацией об остатках
-    rows.push([
-      stock.store_name || config.STORE_NAME || 'Неизвестный магазин',
-      stock.sku || '',
-      stock.name || '',
-      stock.offer_id || '',
-      stock.warehouse_id || '',
-      stock.warehouse_name || '',
-      stock.available_stock_count || 0,
-      stock.valid_stock_count || 0,
-      stock.excess_stock_count || 0,
-      stock.transit_stock_count || 0,
-      (stock.stock_defect_stock_count || 0) + (stock.transit_defect_stock_count || 0),
-      stock.return_from_customer_stock_count || 0,
-      stock.return_to_seller_stock_count || 0,
-      stock.other_stock_count || 0,
-      stock.requested_stock_count || 0,
-      stock.turnover_grade || '',
-      stock.ads || 0,
-      stock.days_without_sales || 0,
-      stock.idc || 0,
-      new Date().toLocaleString('ru-RU')
-    ]);
+    // Проверяем структуру данных - v3 API или аналитика
+    if (stock.stocks && Array.isArray(stock.stocks)) {
+      // v3 API - у товара есть массив stocks
+      stock.stocks.forEach(stockItem => {
+        // Показываем и FBO и FBS остатки
+        if (stockItem.type === 'fbo' || stockItem.type === 'fbs') {
+          rows.push([
+            stock.store_name || config.STORE_NAME || 'Неизвестный магазин',
+            stock.offer_id || '',
+            stock.name || '',
+            stock.article || '',
+            stockItem.warehouse_ids && stockItem.warehouse_ids.length > 0 ? stockItem.warehouse_ids[0] : '',
+            stock.warehouse_name || '',
+            stockItem.type.toUpperCase() || '',
+            stockItem.present || 0,
+            stockItem.reserved || 0,
+            (stockItem.present || 0) - (stockItem.reserved || 0), // available = present - reserved
+            new Date().toLocaleString('ru-RU')
+          ]);
+        }
+      });
+    } else if (stock.available_stock_count !== undefined) {
+      // API аналитики - полная структура
+      rows.push([
+        stock.store_name || config.STORE_NAME || 'Неизвестный магазин',
+        stock.sku || '',
+        stock.name || '',
+        stock.offer_id || '',
+        stock.warehouse_id || '',
+        stock.warehouse_name || '',
+        'FBO', // Предполагаем FBO для аналитики
+        stock.available_stock_count || 0,
+        0, // reserved не доступен в аналитике
+        stock.available_stock_count || 0,
+        new Date().toLocaleString('ru-RU')
+      ]);
+    } else {
+      // Старая структура API
+      rows.push([
+        stock.store_name || config.STORE_NAME || 'Неизвестный магазин',
+        stock.offer_id || '',
+        stock.name || '',
+        stock.article || '',
+        stock.warehouse_id || '',
+        stock.warehouse_name || '',
+        'FBO', // Предполагаем FBO для старой структуры
+        stock.present || 0,
+        stock.reserved || 0,
+        stock.available || 0,
+        new Date().toLocaleString('ru-RU')
+      ]);
+    }
   });
   
   // Записываем данные
