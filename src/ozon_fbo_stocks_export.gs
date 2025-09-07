@@ -537,6 +537,71 @@ function writeToGoogleSheets(stocks) {
 }
 
 /**
+ * Выгружает остатки со всех магазинов
+ */
+function exportAllStoresStocks() {
+  try {
+    const stores = getStoresList();
+    
+    if (stores.length === 0) {
+      SpreadsheetApp.getUi().alert('Ошибка', 'Нет добавленных магазинов!', SpreadsheetApp.getUi().ButtonSet.OK);
+      return;
+    }
+    
+    console.log(`Начинаем выгрузку остатков со всех магазинов (${stores.length} магазинов)...`);
+    
+    const allStocks = [];
+    
+    stores.forEach((store, index) => {
+      try {
+        console.log(`Обрабатываем магазин ${index + 1}/${stores.length}: ${store.name}`);
+        
+        // Временно устанавливаем активный магазин
+        const originalActiveStore = getActiveStore();
+        setActiveStore(store.id);
+        
+        // Получаем данные о складах
+        const warehouses = getWarehouses();
+        console.log(`  Найдено складов: ${warehouses.length}`);
+        
+        // Получаем остатки по всем складам
+        warehouses.forEach(warehouse => {
+          const stocks = getFBOStocks(warehouse.warehouse_id);
+          stocks.forEach(stock => {
+            stock.warehouse_name = warehouse.name;
+            stock.warehouse_id = warehouse.warehouse_id;
+            stock.store_name = store.name; // Добавляем название магазина
+          });
+          allStocks.push(...stocks);
+        });
+        
+        // Восстанавливаем активный магазин
+        if (originalActiveStore) {
+          setActiveStore(originalActiveStore.id);
+        }
+        
+        console.log(`  Магазин "${store.name}" обработан успешно`);
+        
+      } catch (error) {
+        console.error(`Ошибка при обработке магазина "${store.name}":`, error);
+        // Продолжаем с другими магазинами
+      }
+    });
+    
+    console.log(`Получено записей об остатках со всех магазинов: ${allStocks.length}`);
+    
+    // Записываем в Google Таблицы
+    writeToGoogleSheets(allStocks);
+    
+    console.log('Выгрузка со всех магазинов завершена успешно!');
+    
+  } catch (error) {
+    console.error('Ошибка при выгрузке со всех магазинов:', error);
+    throw error;
+  }
+}
+
+/**
  * Функция для тестирования подключения к API Ozon
  */
 function testOzonConnection() {
