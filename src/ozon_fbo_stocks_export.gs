@@ -1568,14 +1568,14 @@ function wbCreateWarehouseRemainsReport_(apiKey) {
 /**
  * Ждёт готовности отчёта и получает URL скачивания
  */
-function wbWaitReportAndGetUrl_(reportId, apiKey) {
+function wbWaitReportAndGetUrl_(taskId, apiKey) {
   const started = Date.now();
   
   while (Date.now() - started < WB_REPORT_TIMEOUT_MS) {
     Utilities.sleep(WB_REPORT_POLL_INTERVAL_MS);
     
     const url = WB_ANALYTICS_HOST + '/api/v1/warehouse_remains';
-    const resp = UrlFetchApp.fetch(url + '?id=' + encodeURIComponent(reportId), {
+    const resp = UrlFetchApp.fetch(url + '?id=' + encodeURIComponent(taskId), {
       method: 'get',
       muteHttpExceptions: true,
       headers: {
