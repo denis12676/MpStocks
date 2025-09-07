@@ -5,13 +5,49 @@
 
 // Конфигурация API Ozon
 const OZON_CONFIG = {
-  CLIENT_ID: 'YOUR_CLIENT_ID', // Замените на ваш Client ID
-  API_KEY: 'YOUR_API_KEY',     // Замените на ваш API ключ
   BASE_URL: 'https://api-seller.ozon.ru'
 };
 
-// ID Google Таблицы (из URL)
-const SPREADSHEET_ID = 'YOUR_SPREADSHEET_ID'; // Замените на ID вашей таблицы
+/**
+ * Получает настройки из PropertiesService
+ */
+function getOzonConfig() {
+  const properties = PropertiesService.getScriptProperties();
+  
+  return {
+    CLIENT_ID: properties.getProperty('OZON_CLIENT_ID'),
+    API_KEY: properties.getProperty('OZON_API_KEY'),
+    SPREADSHEET_ID: properties.getProperty('GOOGLE_SPREADSHEET_ID'),
+    BASE_URL: OZON_CONFIG.BASE_URL
+  };
+}
+
+/**
+ * Сохраняет настройки в PropertiesService
+ */
+function saveOzonConfig(clientId, apiKey, spreadsheetId) {
+  const properties = PropertiesService.getScriptProperties();
+  
+  properties.setProperties({
+    'OZON_CLIENT_ID': clientId,
+    'OZON_API_KEY': apiKey,
+    'GOOGLE_SPREADSHEET_ID': spreadsheetId
+  });
+  
+  console.log('Настройки сохранены успешно!');
+}
+
+/**
+ * Показывает текущие настройки (без API ключей)
+ */
+function showCurrentSettings() {
+  const config = getOzonConfig();
+  
+  console.log('Текущие настройки:');
+  console.log('Client ID:', config.CLIENT_ID ? '***' + config.CLIENT_ID.slice(-4) : 'Не установлен');
+  console.log('API Key:', config.API_KEY ? '***' + config.API_KEY.slice(-4) : 'Не установлен');
+  console.log('Spreadsheet ID:', config.SPREADSHEET_ID || 'Не установлен');
+}
 
 /**
  * Основная функция для запуска выгрузки
