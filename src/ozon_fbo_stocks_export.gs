@@ -123,6 +123,7 @@ function onOpen() {
       .addItem('📊 Выгрузить через Statistics API (продажи)', 'exportWBStocksViaStatisticsAPI')
       .addItem('🧪 Тест WB API', 'testWBConnection')
       .addItem('🧪 Тест WB API (taskId)', 'testWBTaskIdAPI')
+      .addItem('🧪 Тест WB Statistics API', 'testWBStatisticsAPI')
       .addItem('⚙️ Настройка параметров отчёта WB', 'configureWBReportParams')
       .addItem('⚙️ Настройка лимитов WB API', 'configureWBRateLimits'))
     .addSeparator()
