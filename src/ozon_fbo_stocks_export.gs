@@ -1708,13 +1708,16 @@ function wbWaitReportAndGetUrl_(taskId, apiKey) {
 function wbDownloadReportCsv_(taskId, apiKey) {
   // Сначала получаем URL для скачивания по taskId
   const statusUrl = WB_ANALYTICS_HOST + '/api/v1/warehouse_remains';
-  const statusResp = UrlFetchApp.fetch(statusUrl + '?id=' + encodeURIComponent(taskId), {
+  const statusOptions = {
     method: 'get',
     muteHttpExceptions: true,
     headers: {
       'Authorization': apiKey
     }
-  });
+  };
+  
+  console.log('Получаем URL для скачивания отчёта...');
+  const statusResp = wbApiRequestWithRetry(statusUrl + '?id=' + encodeURIComponent(taskId), statusOptions);
   
   if (statusResp.getResponseCode() !== 200) {
     throw new Error(`WB get download URL: HTTP ${statusResp.getResponseCode()} — ${statusResp.getContentText()}`);
@@ -1735,19 +1738,22 @@ function wbDownloadReportCsv_(taskId, apiKey) {
   console.log(`Скачиваем отчёт по URL: ${downloadUrl}`);
   
   // Скачиваем файл
-  const resp = UrlFetchApp.fetch(downloadUrl, {
+  const downloadOptions = {
     method: 'get',
     muteHttpExceptions: true,
     headers: {
       'Authorization': apiKey
     }
-  });
+  };
+  
+  const resp = wbApiRequestWithRetry(downloadUrl, downloadOptions);
   
   const code = resp.getResponseCode();
   if (code < 200 || code >= 300) {
     throw new Error(`WB download CSV: HTTP ${code} — ${resp.getContentText()}`);
   }
   
+  console.log(`✅ Отчёт успешно скачан, размер: ${resp.getContentText().length} символов`);
   return resp.getContentText();
 }
 
