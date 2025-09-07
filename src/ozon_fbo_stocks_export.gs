@@ -117,6 +117,7 @@ function onOpen() {
     .addSeparator()
     .addSubMenu(ui.createMenu('📊 WB Выгрузка остатков')
       .addItem('📦 Выгрузить FBO остатки (активный WB)', 'exportWBFBOStocks')
+      .addItem('📦 Выгрузить FBO остатки (с увеличенными задержками)', 'exportWBFBOStocksWithLongDelays')
       .addItem('📦 Выгрузить FBO остатки (все WB магазины)', 'exportAllWBStoresStocks')
       .addItem('🧪 Тест WB API', 'testWBConnection')
       .addItem('🧪 Тест WB API (taskId)', 'testWBTaskIdAPI')
