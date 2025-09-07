@@ -14,11 +14,26 @@ const OZON_CONFIG = {
 function getOzonConfig() {
   const properties = PropertiesService.getScriptProperties();
   
+  // Сначала пробуем получить из активного магазина
+  const activeStore = getActiveStore();
+  
+  if (activeStore) {
+    return {
+      CLIENT_ID: activeStore.clientId,
+      API_KEY: activeStore.apiKey,
+      SPREADSHEET_ID: properties.getProperty('GOOGLE_SPREADSHEET_ID'),
+      BASE_URL: OZON_CONFIG.BASE_URL,
+      STORE_NAME: activeStore.name
+    };
+  }
+  
+  // Fallback на старые настройки
   return {
     CLIENT_ID: properties.getProperty('OZON_CLIENT_ID'),
     API_KEY: properties.getProperty('OZON_API_KEY'),
     SPREADSHEET_ID: properties.getProperty('GOOGLE_SPREADSHEET_ID'),
-    BASE_URL: OZON_CONFIG.BASE_URL
+    BASE_URL: OZON_CONFIG.BASE_URL,
+    STORE_NAME: 'Legacy Store'
   };
 }
 
