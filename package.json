@@ -1,0 +1,25 @@
+{
+  "name": "ozon-fbo-stocks-export",
+  "version": "1.0.0",
+  "description": "Скрипт для выгрузки остатков со складов FBO Ozon Seller в Google Таблицы",
+  "main": "src/ozon_fbo_stocks_export.gs",
+  "scripts": {
+    "push": "clasp push",
+    "pull": "clasp pull",
+    "deploy": "clasp deploy",
+    "open": "clasp open",
+    "logs": "clasp logs"
+  },
+  "keywords": [
+    "ozon",
+    "fbo",
+    "stocks",
+    "google-sheets",
+    "apps-script"
+  ],
+  "author": "denis12676",
+  "license": "MIT",
+  "devDependencies": {
+    "@google/clasp": "^2.4.2"
+  }
+}
