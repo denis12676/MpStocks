@@ -173,6 +173,21 @@ function getActiveStore() {
 }
 
 /**
+ * Получает активный WB магазин
+ */
+function getActiveWBStore() {
+  const properties = PropertiesService.getScriptProperties();
+  const activeStoreId = properties.getProperty('ACTIVE_WB_STORE_ID');
+  
+  if (!activeStoreId) {
+    return null;
+  }
+  
+  const stores = getWBStoresList();
+  return stores.find(store => store.id === activeStoreId) || null;
+}
+
+/**
  * Устанавливает активный магазин
  */
 function setActiveStore(storeId) {
