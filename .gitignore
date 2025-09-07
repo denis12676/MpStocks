@@ -1,0 +1,17 @@
+﻿# Google Apps Script
+.clasp.json
+.claspignore
+
+# Logs
+*.log
+
+# Environment variables
+.env
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
