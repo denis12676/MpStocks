@@ -431,6 +431,154 @@ function deleteStore() {
 }
 
 /**
+ * Показывает список WB магазинов
+ */
+function showWBStoresList() {
+  const stores = getWBStoresList();
+  const activeStore = getActiveWBStore();
+  
+  if (stores.length === 0) {
+    SpreadsheetApp.getUi().alert('Информация', 'Нет добавленных WB магазинов', SpreadsheetApp.getUi().ButtonSet.OK);
+    return;
+  }
+  
+  let message = 'WB Магазины:\n\n';
+  stores.forEach((store, index) => {
+    const isActive = activeStore && store.id === activeStore.id ? ' (АКТИВНЫЙ)' : '';
+    message += `${index + 1}. ${store.name}${isActive}\n`;
+  });
+  
+  SpreadsheetApp.getUi().alert('WB Магазины', message, SpreadsheetApp.getUi().ButtonSet.OK);
+}
+
+/**
+ * Переключает активный WB магазин
+ */
+function switchActiveWBStore() {
+  const stores = getWBStoresList();
+  
+  if (stores.length === 0) {
+    SpreadsheetApp.getUi().alert('Ошибка', 'Нет доступных WB магазинов', SpreadsheetApp.getUi().ButtonSet.OK);
+    return;
+  }
+  
+  const ui = SpreadsheetApp.getUi();
+  let message = 'Выберите активный WB магазин:\n\n';
+  stores.forEach((store, index) => {
+    message += `${index + 1}. ${store.name}\n`;
+  });
+  
+  const response = ui.prompt('Переключить WB магазин', message, ui.ButtonSet.OK_CANCEL);
+  if (response.getSelectedButton() !== ui.Button.OK) return;
+  
+  const selectedIndex = parseInt(response.getResponseText()) - 1;
+  
+  if (selectedIndex >= 0 && selectedIndex < stores.length) {
+    const selectedStore = stores[selectedIndex];
+    setActiveWBStore(selectedStore.id);
+    ui.alert('Успех', `Активный WB магазин: ${selectedStore.name}`, ui.ButtonSet.OK);
+  } else {
+    ui.alert('Ошибка', 'Неверный номер магазина', ui.ButtonSet.OK);
+  }
+}
+
+/**
+ * Редактирует WB магазин
+ */
+function editWBStore() {
+  const stores = getWBStoresList();
+  
+  if (stores.length === 0) {
+    SpreadsheetApp.getUi().alert('Ошибка', 'Нет доступных WB магазинов', SpreadsheetApp.getUi().ButtonSet.OK);
+    return;
+  }
+  
+  const ui = SpreadsheetApp.getUi();
+  let message = 'Выберите WB магазин для редактирования:\n\n';
+  stores.forEach((store, index) => {
+    message += `${index + 1}. ${store.name}\n`;
+  });
+  
+  const response = ui.prompt('Редактировать WB магазин', message, ui.ButtonSet.OK_CANCEL);
+  if (response.getSelectedButton() !== ui.Button.OK) return;
+  
+  const selectedIndex = parseInt(response.getResponseText()) - 1;
+  
+  if (selectedIndex >= 0 && selectedIndex < stores.length) {
+    const storeToEdit = stores[selectedIndex];
+    
+    // Запрашиваем новые данные
+    const newName = ui.prompt('Редактировать WB магазин', `Название (текущее: ${storeToEdit.name}):`, ui.ButtonSet.OK_CANCEL);
+    if (newName.getSelectedButton() !== ui.Button.OK) return;
+    
+    const newApiKey = ui.prompt('Редактировать WB магазин', 'API Key (оставьте пустым чтобы не менять):', ui.ButtonSet.OK_CANCEL);
+    if (newApiKey.getSelectedButton() !== ui.Button.OK) return;
+    
+    // Обновляем данные
+    if (newName.getResponseText().trim()) {
+      storeToEdit.name = newName.getResponseText().trim();
+    }
+    
+    if (newApiKey.getResponseText().trim()) {
+      storeToEdit.api_key = newApiKey.getResponseText().trim();
+    }
+    
+    storeToEdit.updated_at = new Date().toISOString();
+    
+    // Сохраняем изменения
+    saveWBStoresList(stores);
+    
+    ui.alert('Успех', 'WB магазин обновлен!', ui.ButtonSet.OK);
+  } else {
+    ui.alert('Ошибка', 'Неверный номер магазина', ui.ButtonSet.OK);
+  }
+}
+
+/**
+ * Удаляет WB магазин
+ */
+function deleteWBStore() {
+  const stores = getWBStoresList();
+  
+  if (stores.length === 0) {
+    SpreadsheetApp.getUi().alert('Ошибка', 'Нет доступных WB магазинов', SpreadsheetApp.getUi().ButtonSet.OK);
+    return;
+  }
+  
+  const ui = SpreadsheetApp.getUi();
+  let message = 'Выберите WB магазин для удаления:\n\n';
+  stores.forEach((store, index) => {
+    message += `${index + 1}. ${store.name}\n`;
+  });
+  
+  const response = ui.prompt('Удалить WB магазин', message, ui.ButtonSet.OK_CANCEL);
+  if (response.getSelectedButton() !== ui.Button.OK) return;
+  
+  const selectedIndex = parseInt(response.getResponseText()) - 1;
+  
+  if (selectedIndex >= 0 && selectedIndex < stores.length) {
+    const storeToDelete = stores[selectedIndex];
+    
+    // Подтверждение удаления
+    const confirm = ui.alert('Подтверждение', `Удалить WB магазин "${storeToDelete.name}"?`, ui.ButtonSet.YES_NO);
+    if (confirm === ui.Button.YES) {
+      stores.splice(selectedIndex, 1);
+      saveWBStoresList(stores);
+      
+      // Если удалили активный магазин, выбираем новый
+      const activeStore = getActiveWBStore();
+      if (!activeStore && stores.length > 0) {
+        setActiveWBStore(stores[0].id);
+      }
+      
+      ui.alert('Успех', 'WB магазин удален!', ui.ButtonSet.OK);
+    }
+  } else {
+    ui.alert('Ошибка', 'Неверный номер магазина', ui.ButtonSet.OK);
+  }
+}
+
+/**
  * Устанавливает ID Google Таблицы
  */
 function setSpreadsheetId() {
