@@ -1649,41 +1649,53 @@ function wbWaitReportAndGetUrl_(taskId, apiKey) {
     Utilities.sleep(WB_REPORT_POLL_INTERVAL_MS);
     
     const url = WB_ANALYTICS_HOST + '/api/v1/warehouse_remains';
-    const resp = UrlFetchApp.fetch(url + '?id=' + encodeURIComponent(taskId), {
+    const options = {
       method: 'get',
       muteHttpExceptions: true,
       headers: {
         'Authorization': apiKey
       }
-    });
+    };
     
-    if (resp.getResponseCode() === 200) {
-      const body = JSON.parse(resp.getContentText() || '{}');
-      console.log(`WB Report Status Response:`, JSON.stringify(body, null, 2));
+    try {
+      const resp = wbApiRequestWithRetry(url + '?id=' + encodeURIComponent(taskId), options);
       
-      const status = (body?.data?.status || body?.status || '').toLowerCase();
-      console.log(`Report status: ${status}`);
-      
-      if (status === 'ready' || status === 'done' || status === 'success') {
-        const downloadUrl = body?.data?.file || 
-                           body?.data?.downloadUrl || 
-                           body?.downloadUrl || 
-                           body?.file ||
-                           body?.data?.url ||
-                           body?.url;
+      if (resp.getResponseCode() === 200) {
+        const body = JSON.parse(resp.getContentText() || '{}');
+        console.log(`WB Report Status Response:`, JSON.stringify(body, null, 2));
         
-        if (!downloadUrl) {
-          console.error('Не найден downloadUrl в ответе:', body);
-          throw new Error(`WB report ready, но нет downloadUrl. Ответ: ${JSON.stringify(body)}`);
+        const status = (body?.data?.status || body?.status || '').toLowerCase();
+        console.log(`Report status: ${status}`);
+        
+        if (status === 'ready' || status === 'done' || status === 'success') {
+          const downloadUrl = body?.data?.file || 
+                             body?.data?.downloadUrl || 
+                             body?.downloadUrl || 
+                             body?.file ||
+                             body?.data?.url ||
+                             body?.url;
+          
+          if (!downloadUrl) {
+            console.error('Не найден downloadUrl в ответе:', body);
+            throw new Error(`WB report ready, но нет downloadUrl. Ответ: ${JSON.stringify(body)}`);
+          }
+          
+          console.log(`✅ Получен downloadUrl: ${downloadUrl}`);
+          return downloadUrl;
         }
         
-        console.log(`Получен downloadUrl: ${downloadUrl}`);
-        return downloadUrl;
+        if (status === 'failed' || status === 'error') {
+          throw new Error('WB report status: ' + status);
+        }
       }
-      
-      if (status === 'failed' || status === 'error') {
-        throw new Error('WB report status: ' + status);
+    } catch (error) {
+      // Если это ошибка лимита запросов, продолжаем ждать
+      if (error.message.includes('429') || error.message.includes('Too Many Requests')) {
+        console.log(`⚠️ Лимит запросов при проверке статуса, продолжаем ждать...`);
+        continue;
       }
+      // Для других ошибок пробрасываем дальше
+      throw error;
     }
   }
   
