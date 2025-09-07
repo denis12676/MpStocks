@@ -124,6 +124,7 @@ function onOpen() {
       .addItem('🧪 Тест WB API', 'testWBConnection')
       .addItem('🧪 Тест WB API (taskId)', 'testWBTaskIdAPI')
       .addItem('🧪 Тест WB Statistics API', 'testWBStatisticsAPI')
+      .addItem('🧪 Тест WB Statistics API (периоды)', 'testWBStatisticsAPIWithPeriods')
       .addItem('⚙️ Настройка параметров отчёта WB', 'configureWBReportParams')
       .addItem('⚙️ Настройка лимитов WB API', 'configureWBRateLimits'))
     .addSeparator()
