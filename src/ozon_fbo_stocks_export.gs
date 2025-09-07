@@ -443,6 +443,33 @@ function getWarehouses() {
 }
 
 /**
+ * Получает все склады (FBO и FBS)
+ */
+function getAllWarehouses() {
+  const config = getOzonConfig();
+  const url = `${config.BASE_URL}/v1/warehouse/list`;
+  
+  const options = {
+    method: 'POST',
+    headers: {
+      'Client-Id': config.CLIENT_ID,
+      'Api-Key': config.API_KEY,
+      'Content-Type': 'application/json'
+    },
+    payload: JSON.stringify({}) // Без фильтра - получаем все склады
+  };
+  
+  const response = UrlFetchApp.fetch(url, options);
+  const data = JSON.parse(response.getContentText());
+  
+  if (!data.result) {
+    throw new Error('Ошибка получения списка складов: ' + JSON.stringify(data));
+  }
+  
+  return data.result;
+}
+
+/**
  * Получает остатки товаров на конкретном складе FBO
  */
 function getFBOStocks(warehouseId) {
