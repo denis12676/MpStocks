@@ -119,7 +119,8 @@ function onOpen() {
       .addItem('📦 Выгрузить FBO остатки (активный WB)', 'exportWBFBOStocks')
       .addItem('📦 Выгрузить FBO остатки (все WB магазины)', 'exportAllWBStoresStocks')
       .addItem('🧪 Тест WB API', 'testWBConnection')
-      .addItem('🧪 Тест WB API (taskId)', 'testWBTaskIdAPI'))
+      .addItem('🧪 Тест WB API (taskId)', 'testWBTaskIdAPI')
+      .addItem('⚙️ Настройка лимитов WB API', 'configureWBRateLimits'))
     .addSeparator()
     .addSubMenu(ui.createMenu('⚙️ Настройки')
       .addItem('📊 ID Google Таблицы', 'setSpreadsheetId')
@@ -1460,10 +1461,10 @@ function wbApiRequestWithRetry(url, options, maxRetries = null) {
       }
       
       // Для 429 ошибок продолжаем цикл
-      if (attempt < maxRetries) {
+      if (attempt < actualMaxRetries) {
         const delay = Math.min(
-          WB_RATE_LIMIT_BASE_DELAY_MS * Math.pow(2, attempt),
-          WB_RATE_LIMIT_MAX_DELAY_MS
+          baseDelay * Math.pow(2, attempt),
+          maxDelay
         );
         
         console.log(`⏳ HTTP 429, ждём ${delay}ms перед повторной попыткой...`);
