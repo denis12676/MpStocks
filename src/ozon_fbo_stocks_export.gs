@@ -119,6 +119,8 @@ function onOpen() {
       .addItem('📦 Выгрузить FBO остатки (активный WB)', 'exportWBFBOStocks')
       .addItem('📦 Выгрузить FBO остатки (с увеличенными задержками)', 'exportWBFBOStocksWithLongDelays')
       .addItem('📦 Выгрузить FBO остатки (все WB магазины)', 'exportAllWBStoresStocks')
+      .addSeparator()
+      .addItem('📊 Выгрузить через Statistics API (продажи)', 'exportWBStocksViaStatisticsAPI')
       .addItem('🧪 Тест WB API', 'testWBConnection')
       .addItem('🧪 Тест WB API (taskId)', 'testWBTaskIdAPI')
       .addItem('⚙️ Настройка параметров отчёта WB', 'configureWBReportParams')
