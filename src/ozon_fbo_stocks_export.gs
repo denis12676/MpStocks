@@ -71,7 +71,8 @@ function onOpen() {
   const ui = SpreadsheetApp.getUi();
   
   ui.createMenu('🛒 Ozon FBO Export')
-    .addItem('📊 Выгрузить остатки (активный магазин)', 'exportFBOStocks')
+    .addItem('📊 Выгрузить все остатки (активный магазин)', 'exportFBOStocks')
+    .addItem('📊 Выгрузить только FBO остатки', 'exportOnlyFBOStocks')
     .addItem('📊 Выгрузить остатки (все магазины)', 'exportAllStoresStocks')
     .addSeparator()
     .addSubMenu(ui.createMenu('🏪 Управление магазинами')
