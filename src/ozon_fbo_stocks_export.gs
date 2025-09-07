@@ -496,7 +496,27 @@ function getFBOStocks(warehouseId) {
  */
 function writeToGoogleSheets(stocks) {
   const config = getOzonConfig();
-  const spreadsheet = SpreadsheetApp.openById(config.SPREADSHEET_ID);
+  
+  // Получаем ID таблицы
+  let spreadsheetId = config.SPREADSHEET_ID;
+  
+  // Если ID не установлен, используем текущую таблицу
+  if (!spreadsheetId) {
+    spreadsheetId = SpreadsheetApp.getActiveSpreadsheet().getId();
+    console.log(`Используем текущую таблицу: ${spreadsheetId}`);
+  }
+  
+  console.log(`Открываем таблицу с ID: ${spreadsheetId}`);
+  
+  let spreadsheet;
+  try {
+    spreadsheet = SpreadsheetApp.openById(spreadsheetId);
+  } catch (error) {
+    console.error(`Ошибка открытия таблицы с ID ${spreadsheetId}:`, error);
+    // Пробуем использовать текущую таблицу
+    spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+    console.log('Используем текущую активную таблицу');
+  }
   let sheet = spreadsheet.getSheetByName('FBO Stocks');
   
   // Создаем лист если не существует
