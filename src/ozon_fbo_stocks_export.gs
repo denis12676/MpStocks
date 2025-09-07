@@ -1547,9 +1547,9 @@ function exportWBStocksViaStatisticsAPI() {
     
     console.log(`Начинаем выгрузку через Statistics API для WB магазина: ${config.STORE_NAME}`);
     
-    // Получаем даты (последние 30 дней)
+    // Получаем даты (последние 7 дней - оптимальный период)
     const today = new Date();
-    const monthAgo = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
+    const weekAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
     
     const dateTo = today.toISOString().split('T')[0]; // YYYY-MM-DD
     const dateFrom = monthAgo.toISOString().split('T')[0]; // YYYY-MM-DD
