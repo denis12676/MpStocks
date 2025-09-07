@@ -353,13 +353,13 @@ function setSpreadsheetId() {
  */
 function exportFBOStocks() {
   try {
-    console.log('Начинаем выгрузку остатков FBO...');
-    
     // Проверяем настройки
     const config = getOzonConfig();
     if (!config.CLIENT_ID || !config.API_KEY) {
-      throw new Error('Не настроены API ключи! Используйте saveOzonConfig() для настройки.');
+      throw new Error('Не настроены API ключи! Добавьте магазин через меню "Управление магазинами".');
     }
+    
+    console.log(`Начинаем выгрузку остатков FBO для магазина: ${config.STORE_NAME}...`);
     
     // Получаем данные о складах
     const warehouses = getWarehouses();
