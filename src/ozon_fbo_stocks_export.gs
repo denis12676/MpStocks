@@ -747,6 +747,29 @@ function getFBOStocks(warehouseId) {
 }
 
 /**
+ * Очищает название листа от недопустимых символов
+ */
+function sanitizeSheetName(name) {
+  // Google Sheets ограничения: максимум 100 символов, нельзя использовать: \ / ? * [ ]
+  let cleanName = name
+    .replace(/[\\\/\?\*\[\]]/g, '') // Удаляем недопустимые символы
+    .replace(/\s+/g, ' ') // Заменяем множественные пробелы на один
+    .trim(); // Убираем пробелы в начале и конце
+  
+  // Ограничиваем длину до 100 символов
+  if (cleanName.length > 100) {
+    cleanName = cleanName.substring(0, 100);
+  }
+  
+  // Если название пустое, используем дефолтное
+  if (!cleanName) {
+    cleanName = 'FBO Stocks';
+  }
+  
+  return cleanName;
+}
+
+/**
  * Записывает данные в Google Таблицы
  */
 function writeToGoogleSheets(stocks) {
