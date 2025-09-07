@@ -1911,6 +1911,61 @@ function toNum_(v) {
 }
 
 /**
+ * Настраивает параметры обработки лимитов запросов WB API
+ */
+function configureWBRateLimits() {
+  const ui = SpreadsheetApp.getUi();
+  
+  // Получаем текущие настройки
+  const properties = PropertiesService.getScriptProperties();
+  const currentMaxRetries = properties.getProperty('WB_RATE_LIMIT_MAX_RETRIES') || WB_RATE_LIMIT_MAX_RETRIES;
+  const currentBaseDelay = properties.getProperty('WB_RATE_LIMIT_BASE_DELAY_MS') || WB_RATE_LIMIT_BASE_DELAY_MS;
+  const currentMaxDelay = properties.getProperty('WB_RATE_LIMIT_MAX_DELAY_MS') || WB_RATE_LIMIT_MAX_DELAY_MS;
+  
+  let message = `Текущие настройки лимитов WB API:\n\n`;
+  message += `Максимум попыток при 429 ошибке: ${currentMaxRetries}\n`;
+  message += `Базовая задержка (мс): ${currentBaseDelay}\n`;
+  message += `Максимальная задержка (мс): ${currentMaxDelay}\n\n`;
+  message += `Введите новые значения (или оставьте пустыми для сохранения текущих):`;
+  
+  const maxRetriesResponse = ui.prompt('Настройка лимитов WB API', `${message}\n\nМаксимум попыток (1-10):`, ui.ButtonSet.OK_CANCEL);
+  if (maxRetriesResponse.getSelectedButton() !== ui.Button.OK) return;
+  
+  const baseDelayResponse = ui.prompt('Настройка лимитов WB API', 'Базовая задержка в миллисекундах (1000-10000):', ui.ButtonSet.OK_CANCEL);
+  if (baseDelayResponse.getSelectedButton() !== ui.Button.OK) return;
+  
+  const maxDelayResponse = ui.prompt('Настройка лимитов WB API', 'Максимальная задержка в миллисекундах (10000-60000):', ui.ButtonSet.OK_CANCEL);
+  if (maxDelayResponse.getSelectedButton() !== ui.Button.OK) return;
+  
+  // Валидация и сохранение
+  try {
+    const newMaxRetries = maxRetriesResponse.getResponseText().trim() ? 
+      Math.max(1, Math.min(10, parseInt(maxRetriesResponse.getResponseText()))) : 
+      currentMaxRetries;
+    
+    const newBaseDelay = baseDelayResponse.getResponseText().trim() ? 
+      Math.max(1000, Math.min(10000, parseInt(baseDelayResponse.getResponseText()))) : 
+      currentBaseDelay;
+    
+    const newMaxDelay = maxDelayResponse.getResponseText().trim() ? 
+      Math.max(10000, Math.min(60000, parseInt(maxDelayResponse.getResponseText()))) : 
+      currentMaxDelay;
+    
+    // Сохраняем настройки
+    properties.setProperties({
+      'WB_RATE_LIMIT_MAX_RETRIES': newMaxRetries.toString(),
+      'WB_RATE_LIMIT_BASE_DELAY_MS': newBaseDelay.toString(),
+      'WB_RATE_LIMIT_MAX_DELAY_MS': newMaxDelay.toString()
+    });
+    
+    ui.alert('Успех', `Настройки лимитов WB API сохранены:\n\nМаксимум попыток: ${newMaxRetries}\nБазовая задержка: ${newBaseDelay}мс\nМаксимальная задержка: ${newMaxDelay}мс`, ui.ButtonSet.OK);
+    
+  } catch (error) {
+    ui.alert('Ошибка', `Ошибка сохранения настроек: ${error.message}`, ui.ButtonSet.OK);
+  }
+}
+
+/**
  * Тестирует подключение к WB API
  */
 function testWBConnection() {
