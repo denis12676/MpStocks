@@ -120,6 +120,7 @@ function onOpen() {
       .addItem('📦 Выгрузить FBO остатки (все WB магазины)', 'exportAllWBStoresStocks')
       .addItem('🧪 Тест WB API', 'testWBConnection')
       .addItem('🧪 Тест WB API (taskId)', 'testWBTaskIdAPI')
+      .addItem('⚙️ Настройка параметров отчёта WB', 'configureWBReportParams')
       .addItem('⚙️ Настройка лимитов WB API', 'configureWBRateLimits'))
     .addSeparator()
     .addSubMenu(ui.createMenu('⚙️ Настройки')
@@ -1607,17 +1608,20 @@ function exportAllWBStoresStocks() {
  * Создает отчёт "Warehouses Remains Report" в WB с настраиваемыми параметрами
  */
 function wbCreateWarehouseRemainsReportWithParams_(apiKey, params = {}) {
-  // Параметры по умолчанию
+  // Получаем сохранённые настройки из PropertiesService
+  const properties = PropertiesService.getScriptProperties();
+  
+  // Параметры по умолчанию (с учётом сохранённых настроек)
   const defaultParams = {
-    locale: 'ru',           // Язык полей ответа
-    groupByBrand: 'false',  // Разбивка по брендам
-    groupBySubject: 'false', // Разбивка по предметам
-    groupBySa: 'false',     // Разбивка по артикулам продавца
-    groupByNm: 'true',      // Разбивка по артикулам WB (включаем для получения поля volume)
-    groupByBarcode: 'false', // Разбивка по баркодам
-    groupBySize: 'false',   // Разбивка по размерам
-    filterPics: '0',        // Не применять фильтр по фото
-    filterVolume: '0'       // Не применять фильтр по объёму
+    locale: properties.getProperty('WB_REPORT_LOCALE') || 'ru',           // Язык полей ответа
+    groupByBrand: properties.getProperty('WB_REPORT_GROUP_BY_BRAND') || 'false',  // Разбивка по брендам
+    groupBySubject: properties.getProperty('WB_REPORT_GROUP_BY_SUBJECT') || 'false', // Разбивка по предметам
+    groupBySa: properties.getProperty('WB_REPORT_GROUP_BY_SA') || 'false',     // Разбивка по артикулам продавца
+    groupByNm: properties.getProperty('WB_REPORT_GROUP_BY_NM') || 'true',      // Разбивка по артикулам WB (включаем для получения поля volume)
+    groupByBarcode: properties.getProperty('WB_REPORT_GROUP_BY_BARCODE') || 'false', // Разбивка по баркодам
+    groupBySize: properties.getProperty('WB_REPORT_GROUP_BY_SIZE') || 'false',   // Разбивка по размерам
+    filterPics: properties.getProperty('WB_REPORT_FILTER_PICS') || '0',        // Не применять фильтр по фото
+    filterVolume: properties.getProperty('WB_REPORT_FILTER_VOLUME') || '0'       // Не применять фильтр по объёму
   };
   
   // Объединяем параметры по умолчанию с переданными
