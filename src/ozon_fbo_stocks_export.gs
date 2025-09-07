@@ -384,22 +384,8 @@ function exportFBOStocks() {
     
     console.log(`Начинаем выгрузку остатков FBO для магазина: ${config.STORE_NAME}...`);
     
-    // Получаем все склады (FBO и FBS)
-    const warehouses = getAllWarehouses();
-    console.log(`Найдено складов: ${warehouses.length}`);
-    
-    // Получаем остатки по всем складам
-    const allStocks = [];
-    warehouses.forEach(warehouse => {
-      console.log(`Обрабатываем склад: ${warehouse.name} (${warehouse.type})`);
-      const stocks = getFBOStocks(warehouse.warehouse_id);
-      stocks.forEach(stock => {
-        stock.warehouse_name = warehouse.name;
-        stock.warehouse_id = warehouse.warehouse_id;
-        stock.warehouse_type = warehouse.type;
-      });
-      allStocks.push(...stocks);
-    });
+    // Получаем остатки через аналитику FBO (без дублирования)
+    const allStocks = getFBOStocksAnalytics();
     
     console.log(`Получено записей об остатках: ${allStocks.length}`);
     
