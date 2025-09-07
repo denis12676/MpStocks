@@ -1392,6 +1392,380 @@ function renameStoreSheets() {
   ui.alert('Переименование завершено', `Переименовано листов: ${renamedCount}`, ui.ButtonSet.OK);
 }
 
+// ==================== WB API ФУНКЦИИ ====================
+
+const WB_ANALYTICS_HOST = 'https://seller-analytics-api.wildberries.ru';
+const WB_REPORT_TIMEOUT_MS = 6 * 60 * 1000; // ждать до 6 минут
+const WB_REPORT_POLL_INTERVAL_MS = 4000;
+
+/**
+ * Выгружает FBO остатки для активного WB магазина
+ */
+function exportWBFBOStocks() {
+  try {
+    const config = getWBConfig();
+    
+    if (!config.API_KEY) {
+      SpreadsheetApp.getUi().alert('Ошибка', 'Не настроен API ключ для WB магазина!', SpreadsheetApp.getUi().ButtonSet.OK);
+      return;
+    }
+    
+    console.log(`Начинаем выгрузку FBO остатков для WB магазина: ${config.STORE_NAME}`);
+    
+    const reportId = wbCreateWarehouseRemainsReport_(config.API_KEY);
+    const downloadUrl = wbWaitReportAndGetUrl_(reportId, config.API_KEY);
+    const csv = wbDownloadReportCsv_(downloadUrl, config.API_KEY);
+    const rows = parseCsv_(csv);
+    
+    if (rows.length === 0) {
+      console.log('Нет данных для записи');
+      return;
+    }
+    
+    // Обрабатываем данные
+    const headerMap = normalizeHeaderMap_(rows[0]);
+    const data = rows.slice(1).map(r => ({
+      nmId: pick_(r, headerMap.nmId),
+      supplierArticle: pick_(r, headerMap.supplierArticle),
+      barcode: pick_(r, headerMap.barcode),
+      techSize: pick_(r, headerMap.techSize),
+      warehouseName: pick_(r, headerMap.warehouseName),
+      warehouseId: pick_(r, headerMap.warehouseId),
+      quantity: toNum_(pick_(r, headerMap.quantity)),
+      reserve: toNum_(pick_(r, headerMap.reserve)),
+      inWayToClient: toNum_(pick_(r, headerMap.inWayToClient)),
+      inWayFromClient: toNum_(pick_(r, headerMap.inWayFromClient)),
+      store_name: config.STORE_NAME
+    }));
+    
+    // Записываем в Google Sheets
+    writeWBToGoogleSheets(data);
+    
+    console.log(`Выгрузка WB FBO остатков завершена! Записано товаров: ${data.length}`);
+    
+  } catch (error) {
+    console.error('Ошибка при выгрузке WB FBO остатков:', error);
+    SpreadsheetApp.getUi().alert('Ошибка', `Ошибка выгрузки: ${error.message}`, SpreadsheetApp.getUi().ButtonSet.OK);
+  }
+}
+
+/**
+ * Выгружает FBO остатки для всех WB магазинов
+ */
+function exportAllWBStoresStocks() {
+  try {
+    const stores = getWBStoresList();
+    
+    if (stores.length === 0) {
+      SpreadsheetApp.getUi().alert('Ошибка', 'Нет добавленных WB магазинов!', SpreadsheetApp.getUi().ButtonSet.OK);
+      return;
+    }
+    
+    console.log(`Начинаем выгрузку FBO остатков со всех WB магазинов (${stores.length} магазинов)...`);
+    
+    const originalActiveStore = getActiveWBStore();
+    let totalProcessed = 0;
+    
+    stores.forEach((store, index) => {
+      try {
+        console.log(`Обрабатываем WB магазин ${index + 1}/${stores.length}: ${store.name}`);
+        
+        // Устанавливаем активный магазин
+        setActiveWBStore(store.id);
+        
+        // Получаем остатки для текущего магазина
+        const reportId = wbCreateWarehouseRemainsReport_(store.api_key);
+        const downloadUrl = wbWaitReportAndGetUrl_(reportId, store.api_key);
+        const csv = wbDownloadReportCsv_(downloadUrl, store.api_key);
+        const rows = parseCsv_(csv);
+        
+        if (rows.length > 0) {
+          // Обрабатываем данные
+          const headerMap = normalizeHeaderMap_(rows[0]);
+          const data = rows.slice(1).map(r => ({
+            nmId: pick_(r, headerMap.nmId),
+            supplierArticle: pick_(r, headerMap.supplierArticle),
+            barcode: pick_(r, headerMap.barcode),
+            techSize: pick_(r, headerMap.techSize),
+            warehouseName: pick_(r, headerMap.warehouseName),
+            warehouseId: pick_(r, headerMap.warehouseId),
+            quantity: toNum_(pick_(r, headerMap.quantity)),
+            reserve: toNum_(pick_(r, headerMap.reserve)),
+            inWayToClient: toNum_(pick_(r, headerMap.inWayToClient)),
+            inWayFromClient: toNum_(pick_(r, headerMap.inWayFromClient)),
+            store_name: store.name
+          }));
+          
+          // Записываем в отдельный лист для этого магазина
+          writeWBToGoogleSheets(data);
+          totalProcessed += data.length;
+        }
+        
+        console.log(`  WB магазин "${store.name}" обработан успешно`);
+        
+      } catch (error) {
+        console.error(`Ошибка при обработке WB магазина "${store.name}":`, error);
+        // Продолжаем с другими магазинами
+      }
+    });
+    
+    // Восстанавливаем активный магазин
+    if (originalActiveStore) {
+      setActiveWBStore(originalActiveStore.id);
+    }
+    
+    console.log(`Выгрузка со всех WB магазинов завершена! Всего обработано товаров: ${totalProcessed}`);
+    
+    SpreadsheetApp.getUi().alert('Выгрузка завершена', `Обработано ${stores.length} WB магазинов, всего товаров: ${totalProcessed}`, SpreadsheetApp.getUi().ButtonSet.OK);
+    
+  } catch (error) {
+    console.error('Ошибка при выгрузке со всех WB магазинов:', error);
+    throw error;
+  }
+}
+
+/**
+ * Создает отчёт "Warehouses Remains Report" в WB
+ */
+function wbCreateWarehouseRemainsReport_(apiKey) {
+  const url = WB_ANALYTICS_HOST + '/api/v1/warehouse_remains';
+  const resp = UrlFetchApp.fetch(url, {
+    method: 'post',
+    muteHttpExceptions: true,
+    contentType: 'application/json; charset=utf-8',
+    headers: {
+      'Authorization': apiKey
+    },
+    payload: JSON.stringify({})
+  });
+  
+  const code = resp.getResponseCode();
+  if (code < 200 || code >= 300) {
+    throw new Error(`WB create report: HTTP ${code} — ${resp.getContentText()}`);
+  }
+  
+  const body = JSON.parse(resp.getContentText() || '{}');
+  const reportId = body?.data?.id || body?.reportId || body?.id;
+  
+  if (!reportId) {
+    throw new Error('WB create report: не получили reportId');
+  }
+  
+  return reportId;
+}
+
+/**
+ * Ждёт готовности отчёта и получает URL скачивания
+ */
+function wbWaitReportAndGetUrl_(reportId, apiKey) {
+  const started = Date.now();
+  
+  while (Date.now() - started < WB_REPORT_TIMEOUT_MS) {
+    Utilities.sleep(WB_REPORT_POLL_INTERVAL_MS);
+    
+    const url = WB_ANALYTICS_HOST + '/api/v1/warehouse_remains';
+    const resp = UrlFetchApp.fetch(url + '?id=' + encodeURIComponent(reportId), {
+      method: 'get',
+      muteHttpExceptions: true,
+      headers: {
+        'Authorization': apiKey
+      }
+    });
+    
+    if (resp.getResponseCode() === 200) {
+      const body = JSON.parse(resp.getContentText() || '{}');
+      const status = (body?.data?.status || body?.status || '').toLowerCase();
+      
+      if (status === 'ready' || status === 'done' || status === 'success') {
+        const downloadUrl = body?.data?.file || body?.data?.downloadUrl || body?.downloadUrl || body?.file;
+        if (!downloadUrl) {
+          throw new Error('WB report ready, но нет downloadUrl');
+        }
+        return downloadUrl;
+      }
+      
+      if (status === 'failed' || status === 'error') {
+        throw new Error('WB report status: ' + status);
+      }
+    }
+  }
+  
+  throw new Error('WB report: ожидание готовности превысило лимит');
+}
+
+/**
+ * Скачивает CSV-файл отчёта
+ */
+function wbDownloadReportCsv_(downloadUrl, apiKey) {
+  const resp = UrlFetchApp.fetch(downloadUrl, {
+    method: 'get',
+    muteHttpExceptions: true,
+    headers: {
+      'Authorization': apiKey
+    }
+  });
+  
+  const code = resp.getResponseCode();
+  if (code < 200 || code >= 300) {
+    throw new Error(`WB download CSV: HTTP ${code} — ${resp.getContentText()}`);
+  }
+  
+  return resp.getContentText();
+}
+
+/**
+ * Записывает данные WB в Google Таблицы
+ */
+function writeWBToGoogleSheets(data) {
+  const config = getWBConfig();
+  
+  // Получаем ID таблицы
+  let spreadsheetId = config.SPREADSHEET_ID;
+  
+  // Если ID не установлен, используем текущую таблицу
+  if (!spreadsheetId) {
+    spreadsheetId = SpreadsheetApp.getActiveSpreadsheet().getId();
+    console.log(`Используем текущую таблицу: ${spreadsheetId}`);
+  }
+  
+  console.log(`Открываем таблицу с ID: ${spreadsheetId}`);
+  
+  let spreadsheet;
+  try {
+    spreadsheet = SpreadsheetApp.openById(spreadsheetId);
+  } catch (error) {
+    console.error(`Ошибка открытия таблицы с ID ${spreadsheetId}:`, error);
+    // Пробуем использовать текущую таблицу
+    spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+    console.log('Используем текущую активную таблицу');
+  }
+  
+  // Определяем название листа на основе магазина
+  const storeName = config.STORE_NAME || 'Неизвестный WB магазин';
+  const sheetName = sanitizeSheetName(storeName);
+  
+  console.log(`Создаем/используем лист: ${sheetName}`);
+  
+  let sheet = spreadsheet.getSheetByName(sheetName);
+  
+  // Создаем лист если не существует
+  if (!sheet) {
+    sheet = spreadsheet.insertSheet(sheetName);
+  }
+  
+  // Очищаем только диапазон с данными (A:K)
+  const lastRow = sheet.getLastRow();
+  if (lastRow > 0) {
+    const range = sheet.getRange(1, 1, lastRow, 11); // 11 колонок A-K
+    range.clear();
+  }
+  
+  // Заголовки для WB
+  const headers = [
+    'Магазин',
+    'nmId',
+    'Артикул поставщика',
+    'Штрихкод',
+    'Размер',
+    'Название склада',
+    'ID склада',
+    'Остаток',
+    'Зарезервировано',
+    'В пути к клиенту',
+    'В пути от клиента'
+  ];
+  
+  // Записываем заголовки
+  sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+  
+  // Форматируем заголовки
+  const headerRange = sheet.getRange(1, 1, 1, headers.length);
+  headerRange.setFontWeight('bold');
+  headerRange.setBackground('#E8F0FE');
+  
+  if (data.length === 0) {
+    console.log('Нет данных для записи');
+    return;
+  }
+  
+  // Подготавливаем данные
+  const rows = data.map(item => [
+    item.store_name || config.STORE_NAME || 'Неизвестный WB магазин',
+    item.nmId || '',
+    item.supplierArticle || '',
+    item.barcode || '',
+    item.techSize || '',
+    item.warehouseName || '',
+    item.warehouseId || '',
+    item.quantity || 0,
+    item.reserve || 0,
+    item.inWayToClient || 0,
+    item.inWayFromClient || 0
+  ]);
+  
+  // Записываем данные
+  if (rows.length > 0) {
+    try {
+      const dataRange = sheet.getRange(2, 1, rows.length, headers.length);
+      dataRange.setValues(rows);
+      
+      // Добавляем фильтр только если есть данные
+      const filterRange = sheet.getRange(1, 1, rows.length + 1, headers.length);
+      filterRange.createFilter();
+      
+      console.log(`Записано ${rows.length} строк в Google Таблицы`);
+    } catch (error) {
+      console.error('Ошибка при записи данных:', error);
+      throw error;
+    }
+  } else {
+    console.log('Нет данных для записи');
+  }
+}
+
+/**
+ * Парсит CSV в массив строк
+ */
+function parseCsv_(csv) {
+  const rows = Utilities.parseCsv(csv, ',');
+  return rows;
+}
+
+/**
+ * Нормализует заголовки к ожидаемым ключам
+ */
+function normalizeHeaderMap_(headerRow) {
+  const map = {};
+  const norm = s => String(s || '').trim().toLowerCase();
+  
+  headerRow.forEach((h, i) => {
+    const n = norm(h);
+    if (['nmid', 'nm_id', 'nm id', 'nm'].includes(n)) map.nmId = i;
+    if (['supplierarticle', 'supplier_article', 'sa', 'vendorcode'].includes(n)) map.supplierArticle = i;
+    if (['barcode', 'bar_code', 'штрихкод'].includes(n)) map.barcode = i;
+    if (['techsize', 'size', 'tech_size', 'размер'].includes(n)) map.techSize = i;
+    if (['warehousename', 'warehouse_name', 'склад'].includes(n)) map.warehouseName = i;
+    if (['warehouseid', 'warehouse_id', 'id склада'].includes(n)) map.warehouseId = i;
+    if (['quantity', 'qty', 'present', 'остаток'].includes(n)) map.quantity = i;
+    if (['reserve', 'reserved'].includes(n)) map.reserve = i;
+    if (['inwaytoclient', 'in_way_to_client'].includes(n)) map.inWayToClient = i;
+    if (['inwayfromclient', 'in_way_from_client'].includes(n)) map.inWayFromClient = i;
+  });
+  
+  return map;
+}
+
+/**
+ * Вспомогательные функции
+ */
+function pick_(row, idx) { 
+  return (idx == null) ? '' : row[idx]; 
+}
+
+function toNum_(v) { 
+  return Number(String(v || '').replace(',', '.')) || 0; 
+}
+
 /**
  * Тестирует v4 API с пагинацией
  */
