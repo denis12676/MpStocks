@@ -87,6 +87,7 @@ function onOpen() {
       .addItem('📊 Установить текущую таблицу', 'setCurrentSpreadsheetId')
       .addItem('🔍 Проверить подключение', 'testOzonConnection')
       .addItem('🧪 Тест API endpoints', 'testStocksEndpoints')
+      .addItem('🔬 Анализ v3 API', 'analyzeV3Response')
       .addItem('🔬 Анализ v4 API', 'analyzeV4Response')
       .addItem('📋 Показать настройки', 'showCurrentSettings'))
     .addSeparator()
