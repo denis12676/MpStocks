@@ -1607,7 +1607,22 @@ function exportAllWBStoresStocks() {
  * Создает отчёт "Warehouses Remains Report" в WB
  */
 function wbCreateWarehouseRemainsReport_(apiKey) {
-  const url = WB_ANALYTICS_HOST + '/api/v1/warehouse_remains';
+  // Формируем URL с параметрами согласно документации API
+  const baseUrl = WB_ANALYTICS_HOST + '/api/v1/warehouse_remains';
+  const params = new URLSearchParams({
+    locale: 'ru',           // Язык полей ответа
+    groupByBrand: 'false',  // Разбивка по брендам
+    groupBySubject: 'false', // Разбивка по предметам
+    groupBySa: 'false',     // Разбивка по артикулам продавца
+    groupByNm: 'true',      // Разбивка по артикулам WB (включаем для получения поля volume)
+    groupByBarcode: 'false', // Разбивка по баркодам
+    groupBySize: 'false',   // Разбивка по размерам
+    filterPics: '0',        // Не применять фильтр по фото
+    filterVolume: '0'       // Не применять фильтр по объёму
+  });
+  
+  const url = `${baseUrl}?${params.toString()}`;
+  
   const options = {
     method: 'get',
     muteHttpExceptions: true,
@@ -1617,6 +1632,7 @@ function wbCreateWarehouseRemainsReport_(apiKey) {
   };
   
   console.log('Создаём отчёт WB...');
+  console.log(`URL: ${url}`);
   const resp = wbApiRequestWithRetry(url, options);
   
   const code = resp.getResponseCode();
