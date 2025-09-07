@@ -1406,6 +1406,71 @@ const WB_RATE_LIMIT_BASE_DELAY_MS = 2000; // базовая задержка 2 �
 const WB_RATE_LIMIT_MAX_DELAY_MS = 30000; // максимальная задержка 30 секунд
 
 /**
+ * Выполняет запрос к WB API с обработкой лимитов запросов (HTTP 429)
+ */
+function wbApiRequestWithRetry(url, options, maxRetries = WB_RATE_LIMIT_MAX_RETRIES) {
+  let lastError;
+  
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      const resp = UrlFetchApp.fetch(url, options);
+      const code = resp.getResponseCode();
+      
+      if (code === 429) {
+        // Обрабатываем ошибку "Too Many Requests"
+        const errorBody = resp.getContentText();
+        console.log(`⚠️ HTTP 429 (Too Many Requests) на попытке ${attempt + 1}/${maxRetries + 1}`);
+        console.log(`Ошибка: ${errorBody}`);
+        
+        if (attempt < maxRetries) {
+          // Вычисляем задержку с экспоненциальным backoff
+          const delay = Math.min(
+            WB_RATE_LIMIT_BASE_DELAY_MS * Math.pow(2, attempt),
+            WB_RATE_LIMIT_MAX_DELAY_MS
+          );
+          
+          console.log(`⏳ Ждём ${delay}ms перед повторной попыткой...`);
+          Utilities.sleep(delay);
+          continue;
+        } else {
+          throw new Error(`WB API: превышен лимит запросов после ${maxRetries + 1} попыток. Последняя ошибка: ${errorBody}`);
+        }
+      }
+      
+      // Если не 429, возвращаем ответ (успешный или с другой ошибкой)
+      return resp;
+      
+    } catch (error) {
+      lastError = error;
+      
+      // Если это не HTTP ошибка, пробрасываем её дальше
+      if (!error.message.includes('HTTP')) {
+        throw error;
+      }
+      
+      // Для HTTP ошибок, отличных от 429, пробрасываем сразу
+      if (!error.message.includes('429')) {
+        throw error;
+      }
+      
+      // Для 429 ошибок продолжаем цикл
+      if (attempt < maxRetries) {
+        const delay = Math.min(
+          WB_RATE_LIMIT_BASE_DELAY_MS * Math.pow(2, attempt),
+          WB_RATE_LIMIT_MAX_DELAY_MS
+        );
+        
+        console.log(`⏳ HTTP 429, ждём ${delay}ms перед повторной попыткой...`);
+        Utilities.sleep(delay);
+      }
+    }
+  }
+  
+  // Если дошли сюда, все попытки исчерпаны
+  throw lastError || new Error('WB API: все попытки запроса исчерпаны');
+}
+
+/**
  * Выгружает FBO остатки для активного WB магазина
  */
 function exportWBFBOStocks() {
