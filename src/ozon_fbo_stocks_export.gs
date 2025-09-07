@@ -1766,6 +1766,76 @@ function toNum_(v) {
 }
 
 /**
+ * Тестирует подключение к WB API
+ */
+function testWBConnection() {
+  try {
+    const config = getWBConfig();
+    
+    if (!config.API_KEY) {
+      SpreadsheetApp.getUi().alert('Ошибка', 'Не настроен API ключ для WB магазина!', SpreadsheetApp.getUi().ButtonSet.OK);
+      return;
+    }
+    
+    console.log('Тестируем подключение к WB API...');
+    console.log(`API Key: ${config.API_KEY.substring(0, 10)}...`);
+    
+    // Пробуем разные endpoints
+    const endpoints = [
+      '/api/v1/warehouse_remains',
+      '/api/v1/warehouses',
+      '/api/v1/supplier/warehouses',
+      '/api/v1/supplier/warehouse_remains'
+    ];
+    
+    let success = false;
+    let lastError = '';
+    
+    for (const endpoint of endpoints) {
+      try {
+        console.log(`Пробуем endpoint: ${WB_ANALYTICS_HOST}${endpoint}`);
+        
+        const resp = UrlFetchApp.fetch(WB_ANALYTICS_HOST + endpoint, {
+          method: 'get',
+          muteHttpExceptions: true,
+          headers: {
+            'Authorization': config.API_KEY
+          }
+        });
+        
+        const code = resp.getResponseCode();
+        console.log(`Response code: ${code}`);
+        
+        if (code === 200) {
+          const body = resp.getContentText();
+          console.log(`✅ Успешный ответ от ${endpoint}:`, body.substring(0, 500));
+          success = true;
+          break;
+        } else {
+          const errorText = resp.getContentText();
+          console.log(`❌ Ошибка ${code} с ${endpoint}:`, errorText);
+          lastError = `HTTP ${code}: ${errorText}`;
+        }
+        
+      } catch (error) {
+        console.log(`❌ Исключение с ${endpoint}:`, error.message);
+        lastError = error.message;
+      }
+    }
+    
+    if (success) {
+      SpreadsheetApp.getUi().alert('Успех', 'Подключение к WB API работает!', SpreadsheetApp.getUi().ButtonSet.OK);
+    } else {
+      SpreadsheetApp.getUi().alert('Ошибка', `Не удалось подключиться к WB API. Последняя ошибка: ${lastError}`, SpreadsheetApp.getUi().ButtonSet.OK);
+    }
+    
+  } catch (error) {
+    console.error('Ошибка тестирования WB API:', error);
+    SpreadsheetApp.getUi().alert('Ошибка', `Ошибка тестирования: ${error.message}`, SpreadsheetApp.getUi().ButtonSet.OK);
+  }
+}
+
+/**
  * Тестирует v4 API с пагинацией
  */
 function testV4Pagination() {
