@@ -94,13 +94,14 @@ function exportFBOStocks() {
  * Получает список складов FBO
  */
 function getWarehouses() {
-  const url = `${OZON_CONFIG.BASE_URL}/v1/warehouse/list`;
+  const config = getOzonConfig();
+  const url = `${config.BASE_URL}/v1/warehouse/list`;
   
   const options = {
     method: 'POST',
     headers: {
-      'Client-Id': OZON_CONFIG.CLIENT_ID,
-      'Api-Key': OZON_CONFIG.API_KEY,
+      'Client-Id': config.CLIENT_ID,
+      'Api-Key': config.API_KEY,
       'Content-Type': 'application/json'
     },
     payload: JSON.stringify({
