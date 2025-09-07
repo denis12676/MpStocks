@@ -498,7 +498,70 @@ function getAllWarehouses() {
 }
 
 /**
- * Получает остатки товаров через аналитику FBO
+ * Получает остатки товаров через v3 API
+ */
+function getFBOStocksV3(warehouseIds = []) {
+  const config = getOzonConfig();
+  
+  try {
+    const url = `${config.BASE_URL}/v3/product/info/stocks`;
+    console.log(`Используем endpoint v3: ${url}`);
+    
+    const payload = {
+      filter: {}
+    };
+    
+    // Если указаны конкретные склады, добавляем фильтр
+    if (warehouseIds.length > 0) {
+      payload.filter.warehouse_id = warehouseIds;
+    }
+    
+    payload.limit = 1000; // Максимум записей за раз
+    
+    const options = {
+      method: 'POST',
+      headers: {
+        'Client-Id': config.CLIENT_ID,
+        'Api-Key': config.API_KEY,
+        'Content-Type': 'application/json'
+      },
+      payload: JSON.stringify(payload),
+      muteHttpExceptions: true
+    };
+    
+    const response = UrlFetchApp.fetch(url, options);
+    const responseCode = response.getResponseCode();
+    const responseText = response.getContentText();
+    
+    console.log(`Response code: ${responseCode}`);
+    
+    if (responseCode === 200) {
+      const data = JSON.parse(responseText);
+      console.log(`📋 Структура ответа v3:`, Object.keys(data));
+      
+      if (data.result && data.result.items && Array.isArray(data.result.items)) {
+        console.log(`✅ Успешно получены остатки через v3: ${data.result.items.length} товаров`);
+        return data.result.items;
+      } else if (data.items && Array.isArray(data.items)) {
+        console.log(`✅ Успешно получены остатки через v3 (items): ${data.items.length} товаров`);
+        return data.items;
+      } else {
+        console.log(`⚠️ Неожиданная структура ответа v3:`, data);
+        return [];
+      }
+    } else {
+      console.log(`❌ Ошибка ${responseCode} v3: ${responseText}`);
+      return [];
+    }
+    
+  } catch (error) {
+    console.log(`❌ Исключение v3: ${error.message}`);
+    return [];
+  }
+}
+
+/**
+ * Получает остатки товаров через аналитику FBO (резервный метод)
  */
 function getFBOStocksAnalytics(warehouseIds = []) {
   const config = getOzonConfig();
