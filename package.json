@@ -9,7 +9,9 @@
     "deploy": "clasp deploy",
     "open": "clasp open",
     "logs": "clasp logs",
-    "watch": "powershell -ExecutionPolicy Bypass -File watch.ps1"
+    "watch": "powershell -ExecutionPolicy Bypass -File watch.ps1",
+    "git-push": "powershell -ExecutionPolicy Bypass -File git-push-once.ps1",
+    "git-auto": "powershell -ExecutionPolicy Bypass -File git-auto-push.ps1"
   },
   "keywords": [
     "ozon",
