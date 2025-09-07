@@ -406,10 +406,61 @@ function exportFBOStocks() {
     // Записываем в Google Таблицы
     writeToGoogleSheets(allStocks);
     
-    console.log('Выгрузка завершена успешно!');
+  console.log('Выгрузка завершена успешно!');
+  
+} catch (error) {
+  console.error('Ошибка при выгрузке:', error);
+  throw error;
+}
+}
+
+/**
+ * Выгружает только FBO остатки (без FBS)
+ */
+function exportOnlyFBOStocks() {
+  try {
+    // Проверяем настройки
+    const config = getOzonConfig();
+    if (!config.CLIENT_ID || !config.API_KEY) {
+      throw new Error('Не настроены API ключи! Добавьте магазин через меню "Управление магазинами".');
+    }
+    
+    console.log(`Начинаем выгрузку только FBO остатков для магазина: ${config.STORE_NAME}...`);
+    
+    // Получаем все склады (FBO и FBS)
+    const warehouses = getAllWarehouses();
+    console.log(`Найдено складов: ${warehouses.length}`);
+    
+    // Получаем остатки по всем складам
+    const allStocks = [];
+    warehouses.forEach(warehouse => {
+      console.log(`Обрабатываем склад: ${warehouse.name} (${warehouse.type})`);
+      const stocks = getFBOStocks(warehouse.warehouse_id);
+      stocks.forEach(stock => {
+        stock.warehouse_name = warehouse.name;
+        stock.warehouse_id = warehouse.warehouse_id;
+        stock.warehouse_type = warehouse.type;
+      });
+      allStocks.push(...stocks);
+    });
+    
+    // Фильтруем только FBO остатки
+    const fboStocks = allStocks.filter(stock => {
+      if (stock.stocks && Array.isArray(stock.stocks)) {
+        return stock.stocks.some(stockItem => stockItem.type === 'fbo');
+      }
+      return true; // Для старой структуры API считаем все FBO
+    });
+    
+    console.log(`Получено записей об FBO остатках: ${fboStocks.length}`);
+    
+    // Записываем в Google Таблицы
+    writeToGoogleSheets(fboStocks);
+    
+    console.log('Выгрузка FBO остатков завершена успешно!');
     
   } catch (error) {
-    console.error('Ошибка при выгрузке:', error);
+    console.error('Ошибка при выгрузке FBO остатков:', error);
     throw error;
   }
 }
