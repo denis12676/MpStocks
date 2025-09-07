@@ -1425,21 +1425,21 @@ function wbApiRequestWithRetry(url, options, maxRetries = null) {
       if (code === 429) {
         // Обрабатываем ошибку "Too Many Requests"
         const errorBody = resp.getContentText();
-        console.log(`⚠️ HTTP 429 (Too Many Requests) на попытке ${attempt + 1}/${maxRetries + 1}`);
+        console.log(`⚠️ HTTP 429 (Too Many Requests) на попытке ${attempt + 1}/${actualMaxRetries + 1}`);
         console.log(`Ошибка: ${errorBody}`);
         
-        if (attempt < maxRetries) {
+        if (attempt < actualMaxRetries) {
           // Вычисляем задержку с экспоненциальным backoff
           const delay = Math.min(
-            WB_RATE_LIMIT_BASE_DELAY_MS * Math.pow(2, attempt),
-            WB_RATE_LIMIT_MAX_DELAY_MS
+            baseDelay * Math.pow(2, attempt),
+            maxDelay
           );
           
           console.log(`⏳ Ждём ${delay}ms перед повторной попыткой...`);
           Utilities.sleep(delay);
           continue;
         } else {
-          throw new Error(`WB API: превышен лимит запросов после ${maxRetries + 1} попыток. Последняя ошибка: ${errorBody}`);
+          throw new Error(`WB API: превышен лимит запросов после ${actualMaxRetries + 1} попыток. Последняя ошибка: ${errorBody}`);
         }
       }
       
