@@ -648,6 +648,82 @@ function testOzonConnection() {
 }
 
 /**
+ * Тестирует все доступные API endpoints для остатков
+ */
+function testStocksEndpoints() {
+  const config = getOzonConfig();
+  if (!config.CLIENT_ID || !config.API_KEY) {
+    console.error('Не настроены API ключи!');
+    return;
+  }
+  
+  const warehouses = getWarehouses();
+  if (warehouses.length === 0) {
+    console.error('Нет доступных складов для тестирования');
+    return;
+  }
+  
+  const testWarehouseId = warehouses[0].warehouse_id;
+  console.log(`Тестируем API endpoints для склада: ${testWarehouseId}`);
+  
+  const apiEndpoints = [
+    '/v3/product/info/stocks',
+    '/v2/product/info/stocks', 
+    '/v1/product/info/stocks',
+    '/v4/product/info/stocks',
+    '/v1/product/stocks',
+    '/v2/product/stocks',
+    '/v1/warehouse/stocks',
+    '/v2/warehouse/stocks'
+  ];
+  
+  apiEndpoints.forEach(endpoint => {
+    try {
+      const url = `${config.BASE_URL}${endpoint}`;
+      console.log(`\n🔍 Тестируем: ${endpoint}`);
+      
+      const options = {
+        method: 'POST',
+        headers: {
+          'Client-Id': config.CLIENT_ID,
+          'Api-Key': config.API_KEY,
+          'Content-Type': 'application/json'
+        },
+        payload: JSON.stringify({
+          filter: {
+            warehouse_id: [testWarehouseId]
+          },
+          limit: 10
+        }),
+        muteHttpExceptions: true
+      };
+      
+      const response = UrlFetchApp.fetch(url, options);
+      const responseCode = response.getResponseCode();
+      const responseText = response.getContentText();
+      
+      if (responseCode === 200) {
+        console.log(`✅ ${endpoint} - OK (200)`);
+        try {
+          const data = JSON.parse(responseText);
+          console.log(`   Структура ответа:`, Object.keys(data));
+          if (data.result) {
+            console.log(`   Результат:`, typeof data.result, Array.isArray(data.result) ? `массив из ${data.result.length} элементов` : Object.keys(data.result));
+          }
+        } catch (parseError) {
+          console.log(`   Ошибка парсинга JSON: ${parseError.message}`);
+        }
+      } else {
+        console.log(`❌ ${endpoint} - ${responseCode}: ${responseText.substring(0, 200)}...`);
+      }
+      
+    } catch (error) {
+      console.log(`❌ ${endpoint} - Исключение: ${error.message}`);
+    }
+  });
+}
+
+/**
  * Создает триггер для автоматического запуска (ежедневно в 9:00)
  */
 function createDailyTrigger() {
