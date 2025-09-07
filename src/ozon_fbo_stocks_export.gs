@@ -814,8 +814,9 @@ function writeToGoogleSheets(stocks) {
     sheet = spreadsheet.insertSheet(sheetName);
   }
   
-  // Очищаем лист
-  sheet.clear();
+  // Очищаем только диапазон A:J
+  const range = sheet.getRange('A:J');
+  range.clear();
   
   // Заголовки
   const headers = [
