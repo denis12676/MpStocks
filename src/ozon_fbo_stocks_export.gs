@@ -429,7 +429,12 @@ function exportOnlyFBOStocks() {
     
     // Получаем остатки только с FBO складов
     const warehouseIds = fboWarehouses.map(w => w.warehouse_id);
-    const fboStocks = getFBOStocksAnalytics(warehouseIds);
+    let fboStocks = getFBOStocksV3(warehouseIds);
+    
+    if (fboStocks.length === 0) {
+      console.log('v3 API не вернул данные, пробуем аналитику...');
+      fboStocks = getFBOStocksAnalytics(warehouseIds);
+    }
     
     console.log(`Получено записей об FBO остатках: ${fboStocks.length}`);
     
