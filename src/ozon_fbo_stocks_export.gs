@@ -1408,10 +1408,16 @@ const WB_RATE_LIMIT_MAX_DELAY_MS = 30000; // максимальная задер
 /**
  * Выполняет запрос к WB API с обработкой лимитов запросов (HTTP 429)
  */
-function wbApiRequestWithRetry(url, options, maxRetries = WB_RATE_LIMIT_MAX_RETRIES) {
+function wbApiRequestWithRetry(url, options, maxRetries = null) {
+  // Получаем настройки из PropertiesService или используем значения по умолчанию
+  const properties = PropertiesService.getScriptProperties();
+  const actualMaxRetries = maxRetries || parseInt(properties.getProperty('WB_RATE_LIMIT_MAX_RETRIES')) || WB_RATE_LIMIT_MAX_RETRIES;
+  const baseDelay = parseInt(properties.getProperty('WB_RATE_LIMIT_BASE_DELAY_MS')) || WB_RATE_LIMIT_BASE_DELAY_MS;
+  const maxDelay = parseInt(properties.getProperty('WB_RATE_LIMIT_MAX_DELAY_MS')) || WB_RATE_LIMIT_MAX_DELAY_MS;
+  
   let lastError;
   
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+  for (let attempt = 0; attempt <= actualMaxRetries; attempt++) {
     try {
       const resp = UrlFetchApp.fetch(url, options);
       const code = resp.getResponseCode();
