@@ -1408,6 +1408,16 @@ const WB_RATE_LIMIT_BASE_DELAY_MS = 2000; // базовая задержка 2 �
 const WB_RATE_LIMIT_MAX_DELAY_MS = 30000; // максимальная задержка 30 секунд
 
 /**
+ * Формирует URL с параметрами (аналог URLSearchParams для Google Apps Script)
+ */
+function buildUrlWithParams(baseUrl, params) {
+  const urlParams = Object.keys(params)
+    .map(key => `${encodeURIComponent(key)}=${encodeURIComponent(params[key])}`)
+    .join('&');
+  return `${baseUrl}?${urlParams}`;
+}
+
+/**
  * Выполняет запрос к WB API с обработкой лимитов запросов (HTTP 429)
  */
 function wbApiRequestWithRetry(url, options, maxRetries = null) {
