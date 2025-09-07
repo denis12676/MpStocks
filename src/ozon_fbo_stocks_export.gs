@@ -1491,6 +1491,228 @@ function wbApiRequestWithRetry(url, options, maxRetries = null) {
 }
 
 /**
+ * Получает отчёт по продажам через Statistics API (альтернативный метод)
+ */
+function wbGetReportDetailByPeriod_(apiKey, dateFrom, dateTo) {
+  const url = WB_STATISTICS_HOST + '/api/v5/supplier/reportDetailByPeriod';
+  const params = {
+    dateFrom: dateFrom, // Формат: YYYY-MM-DD
+    dateTo: dateTo,     // Формат: YYYY-MM-DD
+    limit: 100000,      // Максимальное количество записей
+    rrdid: 0            // ID отчёта (0 для нового)
+  };
+  
+  const fullUrl = buildUrlWithParams(url, params);
+  
+  const options = {
+    method: 'get',
+    muteHttpExceptions: true,
+    headers: {
+      'Authorization': apiKey
+    }
+  };
+  
+  console.log('Получаем отчёт по продажам через Statistics API...');
+  console.log(`URL: ${fullUrl}`);
+  console.log(`Параметры:`, params);
+  
+  const resp = wbApiRequestWithRetry(fullUrl, options);
+  
+  const code = resp.getResponseCode();
+  if (code < 200 || code >= 300) {
+    throw new Error(`WB Statistics API: HTTP ${code} — ${resp.getContentText()}`);
+  }
+  
+  const body = JSON.parse(resp.getContentText() || '{}');
+  console.log('WB Statistics API Response:', JSON.stringify(body, null, 2));
+  
+  return body;
+}
+
+/**
+ * Выгружает данные через Statistics API (альтернативный метод)
+ */
+function exportWBStocksViaStatisticsAPI() {
+  try {
+    const config = getWBConfig();
+    
+    if (!config.API_KEY) {
+      SpreadsheetApp.getUi().alert('Ошибка', 'Не настроен API ключ для WB магазина!', SpreadsheetApp.getUi().ButtonSet.OK);
+      return;
+    }
+    
+    console.log(`Начинаем выгрузку через Statistics API для WB магазина: ${config.STORE_NAME}`);
+    
+    // Получаем даты (последние 7 дней)
+    const today = new Date();
+    const weekAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
+    
+    const dateTo = today.toISOString().split('T')[0]; // YYYY-MM-DD
+    const dateFrom = weekAgo.toISOString().split('T')[0]; // YYYY-MM-DD
+    
+    console.log(`Период: с ${dateFrom} по ${dateTo}`);
+    
+    // Получаем отчёт
+    const reportData = wbGetReportDetailByPeriod_(config.API_KEY, dateFrom, dateTo);
+    
+    if (!reportData || !Array.isArray(reportData)) {
+      console.log('Нет данных в отчёте');
+      SpreadsheetApp.getUi().alert('Информация', 'Нет данных в отчёте за указанный период', SpreadsheetApp.getUi().ButtonSet.OK);
+      return;
+    }
+    
+    console.log(`Получено записей: ${reportData.length}`);
+    
+    // Обрабатываем данные
+    const processedData = reportData.map(item => ({
+      nmId: item.nmId || '',
+      supplierArticle: item.supplierArticle || '',
+      barcode: item.barcode || '',
+      techSize: item.techSize || '',
+      warehouseName: item.warehouseName || '',
+      warehouseId: item.warehouseId || '',
+      quantity: 0, // В отчёте по продажам нет остатков
+      reserve: 0,
+      inWayToClient: 0,
+      inWayFromClient: 0,
+      store_name: config.STORE_NAME,
+      // Дополнительные поля из отчёта по продажам
+      sale_dt: item.sale_dt || '',
+      price: item.price || 0,
+      quantity_sold: item.quantity || 0,
+      total_price: item.totalPrice || 0
+    }));
+    
+    // Записываем в Google Sheets
+    writeWBStatisticsToGoogleSheets(processedData);
+    
+    console.log(`Выгрузка через Statistics API завершена! Записано записей: ${processedData.length}`);
+    
+    SpreadsheetApp.getUi().alert('Успех', `Выгрузка через Statistics API завершена!\nЗаписей: ${processedData.length}\nПериод: ${dateFrom} - ${dateTo}`, SpreadsheetApp.getUi().ButtonSet.OK);
+    
+  } catch (error) {
+    console.error('Ошибка при выгрузке через Statistics API:', error);
+    SpreadsheetApp.getUi().alert('Ошибка', `Ошибка выгрузки: ${error.message}`, SpreadsheetApp.getUi().ButtonSet.OK);
+  }
+}
+
+/**
+ * Записывает данные Statistics API в Google Таблицы
+ */
+function writeWBStatisticsToGoogleSheets(data) {
+  const config = getWBConfig();
+  
+  // Получаем ID таблицы
+  let spreadsheetId = config.SPREADSHEET_ID;
+  
+  // Если ID не установлен, используем текущую таблицу
+  if (!spreadsheetId) {
+    spreadsheetId = SpreadsheetApp.getActiveSpreadsheet().getId();
+    console.log(`Используем текущую таблицу: ${spreadsheetId}`);
+  }
+  
+  console.log(`Открываем таблицу с ID: ${spreadsheetId}`);
+  
+  let spreadsheet;
+  try {
+    spreadsheet = SpreadsheetApp.openById(spreadsheetId);
+  } catch (error) {
+    console.error(`Ошибка открытия таблицы с ID ${spreadsheetId}:`, error);
+    // Пробуем использовать текущую таблицу
+    spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+    console.log('Используем текущую активную таблицу');
+  }
+  
+  // Определяем название листа
+  const storeName = config.STORE_NAME || 'Неизвестный WB магазин';
+  const sheetName = sanitizeSheetName(storeName + ' - Statistics');
+  
+  console.log(`Создаем/используем лист: ${sheetName}`);
+  
+  let sheet = spreadsheet.getSheetByName(sheetName);
+  
+  // Создаем лист если не существует
+  if (!sheet) {
+    sheet = spreadsheet.insertSheet(sheetName);
+  }
+  
+  // Очищаем только диапазон с данными (A:N)
+  const lastRow = sheet.getLastRow();
+  if (lastRow > 0) {
+    const range = sheet.getRange(1, 1, lastRow, 14); // 14 колонок A-N
+    range.clear();
+  }
+  
+  // Заголовки для Statistics API
+  const headers = [
+    'Магазин',
+    'nmId',
+    'Артикул поставщика',
+    'Штрихкод',
+    'Размер',
+    'Название склада',
+    'ID склада',
+    'Остаток',
+    'Зарезервировано',
+    'В пути к клиенту',
+    'В пути от клиента',
+    'Дата продажи',
+    'Цена',
+    'Количество продано'
+  ];
+  
+  // Записываем заголовки
+  sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+  
+  // Форматируем заголовки
+  const headerRange = sheet.getRange(1, 1, 1, headers.length);
+  headerRange.setFontWeight('bold');
+  headerRange.setBackground('#E8F0FE');
+  
+  if (data.length === 0) {
+    console.log('Нет данных для записи');
+    return;
+  }
+  
+  // Подготавливаем данные
+  const rows = data.map(item => [
+    item.store_name || config.STORE_NAME || 'Неизвестный WB магазин',
+    item.nmId || '',
+    item.supplierArticle || '',
+    item.barcode || '',
+    item.techSize || '',
+    item.warehouseName || '',
+    item.warehouseId || '',
+    item.quantity || 0,
+    item.reserve || 0,
+    item.inWayToClient || 0,
+    item.inWayFromClient || 0,
+    item.sale_dt || '',
+    item.price || 0,
+    item.quantity_sold || 0
+  ]);
+  
+  // Записываем данные
+  if (rows.length > 0) {
+    try {
+      const dataRange = sheet.getRange(2, 1, rows.length, headers.length);
+      dataRange.setValues(rows);
+      
+      // Добавляем фильтр только если есть данные
+      const filterRange = sheet.getRange(1, 1, rows.length + 1, headers.length);
+      filterRange.createFilter();
+      
+      console.log(`Записано ${rows.length} строк в Google Таблицы`);
+    } catch (error) {
+      console.error('Ошибка при записи данных:', error);
+      throw error;
+    }
+  } else {
+    console.log('Нет данных для записи');
+  }
+}
+
+/**
  * Выгружает FBO остатки для активного WB магазина с увеличенными задержками
  */
 function exportWBFBOStocksWithLongDelays() {
