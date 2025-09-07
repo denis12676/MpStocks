@@ -8,7 +8,8 @@
     "pull": "clasp pull",
     "deploy": "clasp deploy",
     "open": "clasp open",
-    "logs": "clasp logs"
+    "logs": "clasp logs",
+    "watch": "powershell -ExecutionPolicy Bypass -File watch.ps1"
   },
   "keywords": [
     "ozon",

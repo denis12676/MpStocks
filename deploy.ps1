@@ -15,10 +15,12 @@ try {
 
 # Проверяем авторизацию
 try {
-    $loginStatus = clasp login --status
-    if ($loginStatus -match "Not logged in") {
+    $loginStatus = clasp whoami
+    if ($loginStatus -match "Not logged in" -or $LASTEXITCODE -ne 0) {
         Write-Host "Требуется авторизация в Google..." -ForegroundColor Yellow
         clasp login
+    } else {
+        Write-Host "Авторизован как: $loginStatus" -ForegroundColor Green
     }
 } catch {
     Write-Host "Ошибка проверки авторизации" -ForegroundColor Red
