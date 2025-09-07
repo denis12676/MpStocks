@@ -1617,9 +1617,38 @@ function wbWaitReportAndGetUrl_(taskId, apiKey) {
 }
 
 /**
- * Скачивает CSV-файл отчёта
+ * Скачивает CSV-файл отчёта по taskId
  */
-function wbDownloadReportCsv_(downloadUrl, apiKey) {
+function wbDownloadReportCsv_(taskId, apiKey) {
+  // Сначала получаем URL для скачивания по taskId
+  const statusUrl = WB_ANALYTICS_HOST + '/api/v1/warehouse_remains';
+  const statusResp = UrlFetchApp.fetch(statusUrl + '?id=' + encodeURIComponent(taskId), {
+    method: 'get',
+    muteHttpExceptions: true,
+    headers: {
+      'Authorization': apiKey
+    }
+  });
+  
+  if (statusResp.getResponseCode() !== 200) {
+    throw new Error(`WB get download URL: HTTP ${statusResp.getResponseCode()} — ${statusResp.getContentText()}`);
+  }
+  
+  const statusBody = JSON.parse(statusResp.getContentText() || '{}');
+  const downloadUrl = statusBody?.data?.file || 
+                     statusBody?.data?.downloadUrl || 
+                     statusBody?.downloadUrl || 
+                     statusBody?.file ||
+                     statusBody?.data?.url ||
+                     statusBody?.url;
+  
+  if (!downloadUrl) {
+    throw new Error(`WB download: не найден downloadUrl для taskId ${taskId}. Ответ: ${JSON.stringify(statusBody)}`);
+  }
+  
+  console.log(`Скачиваем отчёт по URL: ${downloadUrl}`);
+  
+  // Скачиваем файл
   const resp = UrlFetchApp.fetch(downloadUrl, {
     method: 'get',
     muteHttpExceptions: true,
