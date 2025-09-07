@@ -486,13 +486,28 @@ function getFBOStocks(warehouseId) {
       
       if (responseCode === 200) {
         const data = JSON.parse(responseText);
+        console.log(`📋 Структура ответа от ${apiEndpoints[i]}:`, Object.keys(data));
         
         if (data.result && data.result.items) {
-          console.log(`✅ Успешно получены остатки через ${apiEndpoints[i]}`);
+          console.log(`✅ Успешно получены остатки через ${apiEndpoints[i]} (items)`);
           return data.result.items;
         } else if (data.result && Array.isArray(data.result)) {
           console.log(`✅ Успешно получены остатки через ${apiEndpoints[i]} (массив)`);
           return data.result;
+        } else if (data.result) {
+          console.log(`📋 Результат:`, typeof data.result, Object.keys(data.result));
+          // Пробуем разные варианты структуры
+          if (data.result.stocks) {
+            console.log(`✅ Успешно получены остатки через ${apiEndpoints[i]} (stocks)`);
+            return data.result.stocks;
+          } else if (data.result.products) {
+            console.log(`✅ Успешно получены остатки через ${apiEndpoints[i]} (products)`);
+            return data.result.products;
+          } else {
+            console.log(`⚠️ Неизвестная структура результата:`, data.result);
+          }
+        } else {
+          console.log(`⚠️ Нет поля result в ответе:`, data);
         }
       } else {
         console.log(`❌ Ошибка ${responseCode} с ${apiEndpoints[i]}: ${responseText}`);
