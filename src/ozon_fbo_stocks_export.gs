@@ -413,30 +413,18 @@ function exportOnlyFBOStocks() {
     
     console.log(`Начинаем выгрузку только FBO остатков для магазина: ${config.STORE_NAME}...`);
     
-    // Получаем все склады (FBO и FBS)
-    const warehouses = getAllWarehouses();
-    console.log(`Найдено складов: ${warehouses.length}`);
+    // Получаем только FBO склады
+    const fboWarehouses = getWarehouses();
+    console.log(`Найдено FBO складов: ${fboWarehouses.length}`);
     
-    // Получаем остатки по всем складам
-    const allStocks = [];
-    warehouses.forEach(warehouse => {
-      console.log(`Обрабатываем склад: ${warehouse.name} (${warehouse.type})`);
-      const stocks = getFBOStocks(warehouse.warehouse_id);
-      stocks.forEach(stock => {
-        stock.warehouse_name = warehouse.name;
-        stock.warehouse_id = warehouse.warehouse_id;
-        stock.warehouse_type = warehouse.type;
-      });
-      allStocks.push(...stocks);
-    });
+    if (fboWarehouses.length === 0) {
+      console.log('Нет FBO складов для выгрузки');
+      return;
+    }
     
-    // Фильтруем только FBO остатки
-    const fboStocks = allStocks.filter(stock => {
-      if (stock.stocks && Array.isArray(stock.stocks)) {
-        return stock.stocks.some(stockItem => stockItem.type === 'fbo');
-      }
-      return true; // Для старой структуры API считаем все FBO
-    });
+    // Получаем остатки только с FBO складов
+    const warehouseIds = fboWarehouses.map(w => w.warehouse_id);
+    const fboStocks = getFBOStocksAnalytics(warehouseIds);
     
     console.log(`Получено записей об FBO остатках: ${fboStocks.length}`);
     
