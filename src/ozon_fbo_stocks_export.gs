@@ -979,6 +979,38 @@ function testOzonConnection() {
 }
 
 /**
+ * Тестирует v4 API с пагинацией
+ */
+function testV4Pagination() {
+  try {
+    const config = getOzonConfig();
+    if (!config.CLIENT_ID || !config.API_KEY) {
+      SpreadsheetApp.getUi().alert('Ошибка', 'Не настроены API ключи!', SpreadsheetApp.getUi().ButtonSet.OK);
+      return;
+    }
+    
+    console.log('Начинаем тест v4 API с пагинацией...');
+    
+    const result = fetchAllFboStocksV4();
+    
+    console.log(`Тест завершен. Получено FBO товаров: ${result.length}`);
+    
+    if (result.length > 0) {
+      console.log('Примеры данных:');
+      result.slice(0, 3).forEach((item, index) => {
+        console.log(`${index + 1}. ${item.offer_id} - FBO: ${item.fbo_present}, Reserved: ${item.fbo_reserved}`);
+      });
+    }
+    
+    SpreadsheetApp.getUi().alert('Тест завершен', `Получено FBO товаров: ${result.length}`, SpreadsheetApp.getUi().ButtonSet.OK);
+    
+  } catch (error) {
+    console.error('Ошибка теста v4 API:', error);
+    SpreadsheetApp.getUi().alert('Ошибка', `Ошибка теста: ${error.message}`, SpreadsheetApp.getUi().ButtonSet.OK);
+  }
+}
+
+/**
  * Детально анализирует ответ от v3 API
  */
 function analyzeV3Response() {
