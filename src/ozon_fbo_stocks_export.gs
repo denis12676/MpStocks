@@ -1639,10 +1639,7 @@ function wbCreateWarehouseRemainsReportWithParams_(apiKey, params = {}) {
   
   // Формируем URL с параметрами согласно документации API
   const baseUrl = WB_ANALYTICS_HOST + '/api/v1/warehouse_remains';
-  const urlParams = Object.keys(finalParams)
-    .map(key => `${encodeURIComponent(key)}=${encodeURIComponent(finalParams[key])}`)
-    .join('&');
-  const url = `${baseUrl}?${urlParams}`;
+  const url = buildUrlWithParams(baseUrl, finalParams);
   
   const options = {
     method: 'get',
