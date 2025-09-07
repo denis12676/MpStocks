@@ -82,7 +82,7 @@ function getWarehouses() {
  * Получает остатки товаров на конкретном складе FBO
  */
 function getFBOStocks(warehouseId) {
-  const url = `${OZON_CONFIG.BASE_URL}/v1/product/info/stocks`;
+  const url = `${OZON_CONFIG.BASE_URL}/v2/product/info/stocks`;
   
   const options = {
     method: 'POST',
