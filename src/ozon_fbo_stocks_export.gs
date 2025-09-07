@@ -426,12 +426,21 @@ function getWarehouses() {
  */
 function getFBOStocks(warehouseId) {
   const config = getOzonConfig();
-  // Пробуем разные версии API
-  const apiVersions = ['/v2/product/info/stocks', '/v1/product/info/stocks', '/v3/product/info/stocks'];
   
-  for (let i = 0; i < apiVersions.length; i++) {
+  // Пробуем разные API endpoints для получения остатков
+  const apiEndpoints = [
+    '/v3/product/info/stocks',
+    '/v2/product/info/stocks', 
+    '/v1/product/info/stocks',
+    '/v4/product/info/stocks',
+    '/v1/product/stocks',
+    '/v2/product/stocks'
+  ];
+  
+  for (let i = 0; i < apiEndpoints.length; i++) {
     try {
-      const url = `${config.BASE_URL}${apiVersions[i]}`;
+      const url = `${config.BASE_URL}${apiEndpoints[i]}`;
+      console.log(`Пробуем endpoint: ${url}`);
       
       const options = {
         method: 'POST',
@@ -445,25 +454,39 @@ function getFBOStocks(warehouseId) {
             warehouse_id: [warehouseId]
           },
           limit: 1000
-        })
+        }),
+        muteHttpExceptions: true // Для получения полного ответа при ошибках
       };
       
       const response = UrlFetchApp.fetch(url, options);
-      const data = JSON.parse(response.getContentText());
+      const responseCode = response.getResponseCode();
+      const responseText = response.getContentText();
       
-      if (data.result && data.result.items) {
-        console.log(`Успешно получены остатки через ${apiVersions[i]}`);
-        return data.result.items;
+      console.log(`Response code: ${responseCode}`);
+      
+      if (responseCode === 200) {
+        const data = JSON.parse(responseText);
+        
+        if (data.result && data.result.items) {
+          console.log(`✅ Успешно получены остатки через ${apiEndpoints[i]}`);
+          return data.result.items;
+        } else if (data.result && Array.isArray(data.result)) {
+          console.log(`✅ Успешно получены остатки через ${apiEndpoints[i]} (массив)`);
+          return data.result;
+        }
+      } else {
+        console.log(`❌ Ошибка ${responseCode} с ${apiEndpoints[i]}: ${responseText}`);
       }
       
     } catch (error) {
-      console.log(`Ошибка с ${apiVersions[i]}: ${error.message}`);
-      if (i === apiVersions.length - 1) {
-        throw new Error(`Все версии API недоступны. Последняя ошибка: ${error.message}`);
+      console.log(`❌ Исключение с ${apiEndpoints[i]}: ${error.message}`);
+      if (i === apiEndpoints.length - 1) {
+        throw new Error(`Все API endpoints недоступны. Последняя ошибка: ${error.message}`);
       }
     }
   }
   
+  console.log('⚠️ Ни один API endpoint не вернул данные об остатках');
   return [];
 }
 
