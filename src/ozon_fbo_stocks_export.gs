@@ -56,6 +56,12 @@ function exportFBOStocks() {
   try {
     console.log('Начинаем выгрузку остатков FBO...');
     
+    // Проверяем настройки
+    const config = getOzonConfig();
+    if (!config.CLIENT_ID || !config.API_KEY) {
+      throw new Error('Не настроены API ключи! Используйте saveOzonConfig() для настройки.');
+    }
+    
     // Получаем данные о складах
     const warehouses = getWarehouses();
     console.log(`Найдено складов: ${warehouses.length}`);
