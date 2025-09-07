@@ -343,11 +343,29 @@ function setSpreadsheetId() {
     const newId = response.getResponseText().trim();
     const spreadsheetId = newId || currentId;
     
-    const properties = PropertiesService.getScriptProperties();
-    properties.setProperty('GOOGLE_SPREADSHEET_ID', spreadsheetId);
-    
-    ui.alert('Успех', `ID таблицы установлен: ${spreadsheetId}`, ui.ButtonSet.OK);
+    // Проверяем валидность ID
+    try {
+      SpreadsheetApp.openById(spreadsheetId);
+      const properties = PropertiesService.getScriptProperties();
+      properties.setProperty('GOOGLE_SPREADSHEET_ID', spreadsheetId);
+      ui.alert('Успех', `ID таблицы установлен: ${spreadsheetId}`, ui.ButtonSet.OK);
+    } catch (error) {
+      ui.alert('Ошибка', `Неверный ID таблицы: ${error.message}`, ui.ButtonSet.OK);
+    }
   }
+}
+
+/**
+ * Автоматически устанавливает ID текущей таблицы
+ */
+function setCurrentSpreadsheetId() {
+  const ui = SpreadsheetApp.getUi();
+  const currentId = SpreadsheetApp.getActiveSpreadsheet().getId();
+  
+  const properties = PropertiesService.getScriptProperties();
+  properties.setProperty('GOOGLE_SPREADSHEET_ID', currentId);
+  
+  ui.alert('Успех', `ID текущей таблицы установлен: ${currentId}`, ui.ButtonSet.OK);
 }
 
 /**
