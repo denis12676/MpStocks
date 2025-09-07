@@ -812,23 +812,36 @@ function writeToGoogleSheets(stocks) {
   const rows = [];
   
   stocks.forEach(stock => {
-    // Проверяем структуру данных - v3 API или аналитика
-    if (stock.stocks && Array.isArray(stock.stocks)) {
+    // Проверяем структуру данных - новый v4 API или старые методы
+    if (stock.fbo_present !== undefined) {
+      // Новый v4 API с пагинацией - уже обработанные данные
+      rows.push([
+        stock.store_name || config.STORE_NAME || 'Неизвестный магазин',
+        stock.product_id || '',
+        stock.sku || '',
+        stock.name || '',
+        stock.offer_id || '',
+        stock.fbo_present || 0,
+        stock.fbo_reserved || 0,
+        (stock.fbo_present || 0) - (stock.fbo_reserved || 0), // available = present - reserved
+        stock.warehouse_ids || '',
+        new Date().toLocaleString('ru-RU')
+      ]);
+    } else if (stock.stocks && Array.isArray(stock.stocks)) {
       // v3 API - у товара есть массив stocks
       stock.stocks.forEach(stockItem => {
-        // Показываем и FBO и FBS остатки
-        if (stockItem.type === 'fbo' || stockItem.type === 'fbs') {
+        // Показываем только FBO остатки
+        if (stockItem.type === 'fbo') {
           rows.push([
             stock.store_name || config.STORE_NAME || 'Неизвестный магазин',
-            stock.offer_id || '',
+            stock.product_id || '',
+            stock.sku || '',
             stock.name || '',
-            stock.article || '',
-            stockItem.warehouse_ids && stockItem.warehouse_ids.length > 0 ? stockItem.warehouse_ids[0] : '',
-            stock.warehouse_name || '',
-            stockItem.type.toUpperCase() || '',
+            stock.offer_id || '',
             stockItem.present || 0,
             stockItem.reserved || 0,
             (stockItem.present || 0) - (stockItem.reserved || 0), // available = present - reserved
+            stockItem.warehouse_ids && stockItem.warehouse_ids.length > 0 ? stockItem.warehouse_ids.join(',') : '',
             new Date().toLocaleString('ru-RU')
           ]);
         }
@@ -837,30 +850,28 @@ function writeToGoogleSheets(stocks) {
       // API аналитики - полная структура
       rows.push([
         stock.store_name || config.STORE_NAME || 'Неизвестный магазин',
+        stock.product_id || '',
         stock.sku || '',
         stock.name || '',
         stock.offer_id || '',
-        stock.warehouse_id || '',
-        stock.warehouse_name || '',
-        'FBO', // Предполагаем FBO для аналитики
         stock.available_stock_count || 0,
         0, // reserved не доступен в аналитике
         stock.available_stock_count || 0,
+        stock.warehouse_id || '',
         new Date().toLocaleString('ru-RU')
       ]);
     } else {
       // Старая структура API
       rows.push([
         stock.store_name || config.STORE_NAME || 'Неизвестный магазин',
-        stock.offer_id || '',
+        stock.product_id || '',
+        stock.sku || '',
         stock.name || '',
-        stock.article || '',
-        stock.warehouse_id || '',
-        stock.warehouse_name || '',
-        'FBO', // Предполагаем FBO для старой структуры
+        stock.offer_id || '',
         stock.present || 0,
         stock.reserved || 0,
         stock.available || 0,
+        stock.warehouse_id || '',
         new Date().toLocaleString('ru-RU')
       ]);
     }
