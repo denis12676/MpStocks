@@ -125,18 +125,19 @@ function getWarehouses() {
  * Получает остатки товаров на конкретном складе FBO
  */
 function getFBOStocks(warehouseId) {
+  const config = getOzonConfig();
   // Пробуем разные версии API
   const apiVersions = ['/v2/product/info/stocks', '/v1/product/info/stocks', '/v3/product/info/stocks'];
   
   for (let i = 0; i < apiVersions.length; i++) {
     try {
-      const url = `${OZON_CONFIG.BASE_URL}${apiVersions[i]}`;
+      const url = `${config.BASE_URL}${apiVersions[i]}`;
       
       const options = {
         method: 'POST',
         headers: {
-          'Client-Id': OZON_CONFIG.CLIENT_ID,
-          'Api-Key': OZON_CONFIG.API_KEY,
+          'Client-Id': config.CLIENT_ID,
+          'Api-Key': config.API_KEY,
           'Content-Type': 'application/json'
         },
         payload: JSON.stringify({
@@ -170,7 +171,8 @@ function getFBOStocks(warehouseId) {
  * Записывает данные в Google Таблицы
  */
 function writeToGoogleSheets(stocks) {
-  const spreadsheet = SpreadsheetApp.openById(SPREADSHEET_ID);
+  const config = getOzonConfig();
+  const spreadsheet = SpreadsheetApp.openById(config.SPREADSHEET_ID);
   let sheet = spreadsheet.getSheetByName('FBO Stocks');
   
   // Создаем лист если не существует
