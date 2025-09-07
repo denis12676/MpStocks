@@ -512,6 +512,7 @@ function writeToGoogleSheets(stocks) {
   
   // Подготавливаем данные
   const rows = stocks.map(stock => [
+    stock.store_name || config.STORE_NAME || 'Неизвестный магазин',
     stock.offer_id || '',
     stock.name || '',
     stock.article || '',
