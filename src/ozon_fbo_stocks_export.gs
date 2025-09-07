@@ -772,11 +772,18 @@ function writeToGoogleSheets(stocks) {
     spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
     console.log('Используем текущую активную таблицу');
   }
-  let sheet = spreadsheet.getSheetByName('FBO Stocks');
+  
+  // Определяем название листа на основе магазина
+  const storeName = config.STORE_NAME || 'Неизвестный магазин';
+  const sheetName = sanitizeSheetName(storeName);
+  
+  console.log(`Создаем/используем лист: ${sheetName}`);
+  
+  let sheet = spreadsheet.getSheetByName(sheetName);
   
   // Создаем лист если не существует
   if (!sheet) {
-    sheet = spreadsheet.insertSheet('FBO Stocks');
+    sheet = spreadsheet.insertSheet(sheetName);
   }
   
   // Очищаем лист
