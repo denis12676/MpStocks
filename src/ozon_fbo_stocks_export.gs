@@ -1551,7 +1551,7 @@ function exportWBStocksViaStatisticsAPI() {
     const monthAgo = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
     
     const dateTo = today.toISOString().split('T')[0]; // YYYY-MM-DD
-    const dateFrom = weekAgo.toISOString().split('T')[0]; // YYYY-MM-DD
+    const dateFrom = monthAgo.toISOString().split('T')[0]; // YYYY-MM-DD
     
     console.log(`Период: с ${dateFrom} по ${dateTo}`);
     
