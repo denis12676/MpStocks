@@ -3533,34 +3533,115 @@ function exportAllYandexStoresStocks() {
 }
 
 /**
- * Получает остатки товаров через Яндекс Маркет API
+ * Получает остатки товаров через Яндекс Маркет API (обновленная версия)
  */
 function getYandexStocks(apiToken, campaignId) {
   try {
-    const url = `https://api.partner.market.yandex.ru/v2/campaigns/${campaignId}/offers/stocks.json`;
+    // URL для получения остатков товаров
+    const stocksUrl = `https://api.partner.market.yandex.ru/campaigns/${campaignId}/offers/stocks`;
+    // URL для получения списка складов
+    const warehousesUrl = "https://api.partner.market.yandex.ru/warehouses";
     
-    const options = {
-      method: 'GET',
-      headers: {
-        'Authorization': `OAuth ${apiToken}`,
-        'Content-Type': 'application/json',
-      },
-      muteHttpExceptions: true
+    // Заголовки HTTP для авторизации
+    const headers = {
+      "Api-Key": apiToken
     };
     
-    console.log(`Отправляем запрос к Яндекс Маркет API: ${url}`);
-    const response = UrlFetchApp.fetch(url, options);
-    const code = response.getResponseCode();
-    console.log(`Код ответа: ${code}`);
+    console.log(`Отправляем запрос к Яндекс Маркет API: ${stocksUrl}`);
     
-    if (code !== 200) {
-      throw new Error(`API вернул ошибку: ${code} | ${response.getContentText()}`);
+    // Получаем справочник складов Маркета (FBY)
+    const warehouseMap = {};
+    try {
+      const whResponse = UrlFetchApp.fetch(warehousesUrl, { 
+        "method": "get", 
+        "headers": headers 
+      });
+      const whData = JSON.parse(whResponse.getContentText());
+      if (whData.status == "OK" && whData.result && whData.result.warehouses) {
+        whData.result.warehouses.forEach(function (w) {
+          warehouseMap[w.id] = w.name;
+        });
+        console.log(`Получено складов: ${Object.keys(warehouseMap).length}`);
+      }
+    } catch (e) {
+      console.log("Не удалось получить список складов: " + e);
     }
     
-    const jsonData = JSON.parse(response.getContentText());
-    console.log(`Получено записей: ${jsonData.result?.stocks?.length || 0}`);
+    // Подготовка тела запроса для получения остатков товаров
+    const requestBody = {
+      "archived": false,
+      "withTurnover": false
+    };
     
-    return jsonData.result?.stocks || [];
+    const options = {
+      "method": "post",
+      "contentType": "application/json",
+      "headers": headers,
+      "payload": JSON.stringify(requestBody)
+    };
+    
+    // Выполняем запрос к API с постраничной загрузкой
+    const allStocks = [];
+    let pageToken = null;
+    
+    do {
+      // Если есть токен следующей страницы, добавляем его к телу запроса
+      if (pageToken) {
+        requestBody.page_token = pageToken;
+        options.payload = JSON.stringify(requestBody);
+      }
+      
+      // Выполняем API-запрос за текущей страницей остатков
+      const response = UrlFetchApp.fetch(stocksUrl, options);
+      const code = response.getResponseCode();
+      console.log(`Код ответа: ${code}`);
+      
+      if (code !== 200) {
+        throw new Error(`API вернул ошибку: ${code} | ${response.getContentText()}`);
+      }
+      
+      const data = JSON.parse(response.getContentText());
+      if (data.status != "OK" || !data.result) {
+        throw new Error("Ошибка при получении остатков: " + (data.errors ? JSON.stringify(data.errors) : "статус " + data.status));
+      }
+      
+      // Обрабатываем полученные данные
+      const warehouses = data.result.warehouses;
+      warehouses.forEach(function (warehouse) {
+        const warehouseId = warehouse.warehouseId;
+        const warehouseName = warehouseMap[warehouseId] || "";
+        
+        warehouse.offers.forEach(function (offer) {
+          const sku = offer.offerId;
+          const stocks = offer.stocks;
+          
+          // Инициализируем переменные для основных типов остатков
+          let totalFit = 0, available = 0, reserved = 0;
+          stocks.forEach(function (stock) {
+            if (stock.type === "FIT") totalFit = stock.count;
+            if (stock.type === "AVAILABLE") available = stock.count;
+            if (stock.type === "FREEZE") reserved = stock.count;
+          });
+          
+          // Добавляем данные в результат
+          allStocks.push({
+            sku: sku,
+            warehouseId: warehouseId,
+            warehouseName: warehouseName,
+            totalFit: totalFit,
+            available: available,
+            reserved: reserved
+          });
+        });
+      });
+      
+      // Получаем токен следующей страницы
+      pageToken = data.result.paging && data.result.paging.nextPageToken ? data.result.paging.nextPageToken : null;
+      
+    } while (pageToken);
+    
+    console.log(`Получено записей: ${allStocks.length}`);
+    return allStocks;
     
   } catch (error) {
     console.error('Ошибка при получении остатков Яндекс Маркета:', error);
