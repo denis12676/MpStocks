@@ -3773,3 +3773,35 @@ function testYandexConnection() {
     SpreadsheetApp.getUi().alert('Ошибка', `Ошибка тестирования: ${error.message}`, SpreadsheetApp.getUi().ButtonSet.OK);
   }
 }
+
+/**
+ * Быстрый тест с вашими токенами (для отладки)
+ */
+function testYandexWithYourTokens() {
+  try {
+    const API_TOKEN = "ACMA:b0BKJAZYstQEOJf5sYDNyOlEONs3cGcrTYprLMZi:bb8c04d4";
+    const CAMPAIGN_ID = 89101200;
+    
+    console.log('Тестируем с вашими токенами...');
+    console.log(`Campaign ID: ${CAMPAIGN_ID}`);
+    console.log(`API Token: ***${API_TOKEN.slice(-4)}`);
+    
+    // Получаем остатки
+    const stocks = getYandexStocks(API_TOKEN, CAMPAIGN_ID);
+    
+    if (stocks.length > 0) {
+      console.log(`Получено ${stocks.length} записей остатков`);
+      
+      // Записываем в лист "YM MR" как в оригинальном скрипте
+      writeYandexToGoogleSheets(stocks, "YM MR");
+      
+      SpreadsheetApp.getUi().alert('Успех', `Получено и записано ${stocks.length} записей остатков в лист "YM MR"`, SpreadsheetApp.getUi().ButtonSet.OK);
+    } else {
+      SpreadsheetApp.getUi().alert('Информация', 'Нет данных об остатках', SpreadsheetApp.getUi().ButtonSet.OK);
+    }
+    
+  } catch (error) {
+    console.error('Ошибка при тестировании:', error);
+    SpreadsheetApp.getUi().alert('Ошибка', `Ошибка: ${error.message}`, SpreadsheetApp.getUi().ButtonSet.OK);
+  }
+}
