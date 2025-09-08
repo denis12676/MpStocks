@@ -3650,7 +3650,7 @@ function getYandexStocks(apiToken, campaignId) {
 }
 
 /**
- * Записывает данные Яндекс Маркета в Google Sheets
+ * Записывает данные Яндекс Маркета в Google Sheets (обновленная версия)
  */
 function writeYandexToGoogleSheets(data, storeName) {
   const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
@@ -3667,65 +3667,51 @@ function writeYandexToGoogleSheets(data, storeName) {
     sheet = spreadsheet.insertSheet(sheetName);
   }
   
-  // Очищаем только диапазон с данными
+  // Очищаем только диапазон E:J (данные остатков) как в оригинальном скрипте
   const lastRow = sheet.getLastRow();
   if (lastRow > 0) {
-    const range = sheet.getRange(1, 1, lastRow, 10); // 10 колонок A-J
-    range.clear();
+    sheet.getRange(1, 5, lastRow, 6).clearContent(); // столбцы E–J
   }
-  
-  // Заголовки для Яндекс Маркета
-  const headers = [
-    'Магазин',
-    'SKU',
-    'Название товара',
-    'Остаток',
-    'Обновлено',
-    'Склад',
-    'Тип остатка',
-    'Доступно',
-    'Зарезервировано',
-    'В пути'
-  ];
-  
-  // Записываем заголовки
-  sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
-  
-  // Форматируем заголовки
-  const headerRange = sheet.getRange(1, 1, 1, headers.length);
-  headerRange.setFontWeight('bold');
-  headerRange.setBackground('#E8F0FE');
   
   if (data.length === 0) {
     console.log('Нет данных для записи');
     return;
   }
   
-  // Подготавливаем данные
-  const rows = data.map(item => [
-    storeName,
-    item.sku || '',
-    item.name || '',
-    item.count || 0,
-    item.updatedAt || '',
-    item.warehouse?.name || '',
-    item.type || '',
-    item.available || 0,
-    item.reserved || 0,
-    item.inTransit || 0
-  ]);
+  // Подготавливаем данные в формате оригинального скрипта
+  const rows = [];
   
-  // Записываем данные
+  // Добавляем заголовок столбцов (для удобства)
+  rows.push(["SKU товара", "ID склада", "Название склада", "Всего (FIT)", "Доступно (AVAILABLE)", "Резерв (FREEZE)"]);
+  
+  // Добавляем данные
+  data.forEach(item => {
+    rows.push([
+      item.sku || '',
+      item.warehouseId || '',
+      item.warehouseName || '',
+      item.totalFit || 0,
+      item.available || 0,
+      item.reserved || 0
+    ]);
+  });
+  
+  // Записываем данные в столбцы E:J
   if (rows.length > 0) {
     try {
-      const dataRange = sheet.getRange(2, 1, rows.length, headers.length);
+      const dataRange = sheet.getRange(1, 5, rows.length, rows[0].length);
       dataRange.setValues(rows);
       
+      // Форматируем заголовки
+      const headerRange = sheet.getRange(1, 5, 1, rows[0].length);
+      headerRange.setFontWeight('bold');
+      headerRange.setBackground('#E8F0FE');
+      
       // Добавляем фильтр только если есть данные
-      const filterRange = sheet.getRange(1, 1, rows.length + 1, headers.length);
+      const filterRange = sheet.getRange(1, 5, rows.length, rows[0].length);
       filterRange.createFilter();
       
-      console.log(`Записано ${rows.length} строк в Google Таблицы`);
+      console.log(`Записано ${rows.length} строк в Google Таблицы (включая заголовки)`);
     } catch (error) {
       console.error('Ошибка при записи данных:', error);
       throw error;
