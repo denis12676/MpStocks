@@ -63,6 +63,33 @@ function getWBConfig() {
 }
 
 /**
+ * Получает конфигурацию активного Яндекс Маркет магазина
+ */
+function getYandexConfig() {
+  const properties = PropertiesService.getScriptProperties();
+  
+  // Получаем из активного Яндекс Маркет магазина
+  const activeStore = getActiveYandexStore();
+  
+  if (activeStore) {
+    return {
+      API_TOKEN: activeStore.api_token,
+      CAMPAIGN_ID: activeStore.campaign_id,
+      SPREADSHEET_ID: properties.getProperty('GOOGLE_SPREADSHEET_ID'),
+      STORE_NAME: activeStore.name
+    };
+  }
+  
+  // Fallback на старые настройки
+  return {
+    API_TOKEN: properties.getProperty('YANDEX_API_TOKEN'),
+    CAMPAIGN_ID: properties.getProperty('YANDEX_CAMPAIGN_ID'),
+    SPREADSHEET_ID: properties.getProperty('GOOGLE_SPREADSHEET_ID'),
+    STORE_NAME: 'Legacy Yandex Store'
+  };
+}
+
+/**
  * Сохраняет настройки в PropertiesService
  */
 function saveOzonConfig(clientId, apiKey, spreadsheetId) {
@@ -114,11 +141,19 @@ function onOpen() {
       .addItem('✏️ Редактировать WB магазин', 'editWBStore')
       .addItem('🗑️ Удалить WB магазин', 'deleteWBStore')
       .addItem('🔄 Переключить активный WB магазин', 'switchActiveWBStore'))
+    .addSubMenu(ui.createMenu('🛍️ Управление Яндекс Маркет магазинами')
+      .addItem('➕ Добавить Яндекс Маркет магазин', 'addNewYandexStore')
+      .addItem('📋 Список Яндекс Маркет магазинов', 'showYandexStoresList')
+      .addItem('✏️ Редактировать Яндекс Маркет магазин', 'editYandexStore')
+      .addItem('🗑️ Удалить Яндекс Маркет магазин', 'deleteYandexStore')
+      .addItem('🔄 Переключить активный Яндекс Маркет магазин', 'switchActiveYandexStore'))
     .addSeparator()
     .addSubMenu(ui.createMenu('📊 WB Выгрузка остатков')
       .addItem('📦 Выгрузить FBO остатки (активный WB)', 'exportWBFBOStocks')
+      .addItem('📦 Выгрузить FBO остатки (Statistics API)', 'loadAllStocks')
       .addItem('📦 Выгрузить FBO остатки (с увеличенными задержками)', 'exportWBFBOStocksWithLongDelays')
       .addItem('📦 Выгрузить FBO остатки (все WB магазины)', 'exportAllWBStoresStocks')
+      .addItem('📦 Выгрузить FBO остатки (все WB магазины, Statistics API)', 'exportAllWBStoresStocksStatisticsAPI')
       .addSeparator()
       .addItem('📊 Выгрузить через Statistics API (продажи)', 'exportWBStocksViaStatisticsAPI')
       .addItem('🧪 Тест WB API', 'testWBConnection')
@@ -127,6 +162,11 @@ function onOpen() {
       .addItem('🧪 Тест WB Statistics API (периоды)', 'testWBStatisticsAPIWithPeriods')
       .addItem('⚙️ Настройка параметров отчёта WB', 'configureWBReportParams')
       .addItem('⚙️ Настройка лимитов WB API', 'configureWBRateLimits'))
+    .addSubMenu(ui.createMenu('📊 Яндекс Маркет Выгрузка остатков')
+      .addItem('📦 Выгрузить остатки (активный Яндекс Маркет)', 'exportYandexStocks')
+      .addItem('📦 Выгрузить остатки (все Яндекс Маркет магазины)', 'exportAllYandexStoresStocks')
+      .addSeparator()
+      .addItem('🧪 Тест Яндекс Маркет API', 'testYandexConnection'))
     .addSeparator()
     .addSubMenu(ui.createMenu('⚙️ Настройки')
       .addItem('📊 ID Google Таблицы', 'setSpreadsheetId')
@@ -617,6 +657,257 @@ function deleteWBStore() {
       }
       
       ui.alert('Успех', 'WB магазин удален!', ui.ButtonSet.OK);
+    }
+  } else {
+    ui.alert('Ошибка', 'Неверный номер магазина', ui.ButtonSet.OK);
+  }
+}
+
+// ==================== ФУНКЦИИ ДЛЯ УПРАВЛЕНИЯ ЯНДЕКС МАРКЕТ МАГАЗИНАМИ ====================
+
+/**
+ * Получает список всех Яндекс Маркет магазинов
+ */
+function getYandexStoresList() {
+  const properties = PropertiesService.getScriptProperties();
+  const storesJson = properties.getProperty('YANDEX_STORES');
+  
+  if (!storesJson) {
+    return [];
+  }
+  
+  try {
+    return JSON.parse(storesJson);
+  } catch (error) {
+    console.error('Ошибка парсинга Яндекс Маркет магазинов:', error);
+    return [];
+  }
+}
+
+/**
+ * Сохраняет список Яндекс Маркет магазинов
+ */
+function saveYandexStoresList(stores) {
+  const properties = PropertiesService.getScriptProperties();
+  properties.setProperty('YANDEX_STORES', JSON.stringify(stores));
+}
+
+/**
+ * Получает активный Яндекс Маркет магазин
+ */
+function getActiveYandexStore() {
+  const properties = PropertiesService.getScriptProperties();
+  const activeStoreId = properties.getProperty('ACTIVE_YANDEX_STORE_ID');
+  
+  if (!activeStoreId) {
+    return null;
+  }
+  
+  const stores = getYandexStoresList();
+  return stores.find(store => store.id === activeStoreId) || null;
+}
+
+/**
+ * Устанавливает активный Яндекс Маркет магазин
+ */
+function setActiveYandexStore(storeId) {
+  const properties = PropertiesService.getScriptProperties();
+  properties.setProperty('ACTIVE_YANDEX_STORE_ID', storeId);
+}
+
+/**
+ * Добавляет новый Яндекс Маркет магазин
+ */
+function addNewYandexStore() {
+  const ui = SpreadsheetApp.getUi();
+  
+  // Запрашиваем данные магазина
+  const storeName = ui.prompt('Добавить Яндекс Маркет магазин', 'Введите название магазина:', ui.ButtonSet.OK_CANCEL);
+  if (storeName.getSelectedButton() !== ui.Button.OK) return;
+  
+  const apiToken = ui.prompt('Добавить Яндекс Маркет магазин', 'Введите API Token:', ui.ButtonSet.OK_CANCEL);
+  if (apiToken.getSelectedButton() !== ui.Button.OK) return;
+  
+  const campaignId = ui.prompt('Добавить Яндекс Маркет магазин', 'Введите Campaign ID:', ui.ButtonSet.OK_CANCEL);
+  if (campaignId.getSelectedButton() !== ui.Button.OK) return;
+  
+  // Проверяем что все поля заполнены
+  if (!storeName.getResponseText().trim() || !apiToken.getResponseText().trim() || !campaignId.getResponseText().trim()) {
+    ui.alert('Ошибка', 'Все поля должны быть заполнены!', ui.ButtonSet.OK);
+    return;
+  }
+  
+  // Создаем новый магазин
+  const newStore = {
+    id: Utilities.getUuid(),
+    name: storeName.getResponseText().trim(),
+    api_token: apiToken.getResponseText().trim(),
+    campaign_id: campaignId.getResponseText().trim(),
+    created_at: new Date().toISOString()
+  };
+  
+  // Добавляем в список
+  const stores = getYandexStoresList();
+  stores.push(newStore);
+  saveYandexStoresList(stores);
+  
+  // Если это первый магазин, делаем его активным
+  if (stores.length === 1) {
+    setActiveYandexStore(newStore.id);
+  }
+  
+  ui.alert('Успех', `Яндекс Маркет магазин "${newStore.name}" добавлен!`, ui.ButtonSet.OK);
+}
+
+/**
+ * Показывает список Яндекс Маркет магазинов
+ */
+function showYandexStoresList() {
+  const stores = getYandexStoresList();
+  const activeStore = getActiveYandexStore();
+  
+  if (stores.length === 0) {
+    SpreadsheetApp.getUi().alert('Информация', 'Нет добавленных Яндекс Маркет магазинов', SpreadsheetApp.getUi().ButtonSet.OK);
+    return;
+  }
+  
+  let message = 'Яндекс Маркет Магазины:\n\n';
+  stores.forEach((store, index) => {
+    const isActive = activeStore && store.id === activeStore.id ? ' (АКТИВНЫЙ)' : '';
+    message += `${index + 1}. ${store.name}${isActive}\n`;
+    message += `   Campaign ID: ${store.campaign_id}\n`;
+    message += `   API Token: ***${store.api_token.slice(-4)}\n\n`;
+  });
+  
+  SpreadsheetApp.getUi().alert('Яндекс Маркет Магазины', message, SpreadsheetApp.getUi().ButtonSet.OK);
+}
+
+/**
+ * Переключает активный Яндекс Маркет магазин
+ */
+function switchActiveYandexStore() {
+  const stores = getYandexStoresList();
+  
+  if (stores.length === 0) {
+    SpreadsheetApp.getUi().alert('Ошибка', 'Нет доступных Яндекс Маркет магазинов', SpreadsheetApp.getUi().ButtonSet.OK);
+    return;
+  }
+  
+  const ui = SpreadsheetApp.getUi();
+  let message = 'Выберите активный Яндекс Маркет магазин:\n\n';
+  stores.forEach((store, index) => {
+    message += `${index + 1}. ${store.name}\n`;
+  });
+  
+  const response = ui.prompt('Переключить Яндекс Маркет магазин', message, ui.ButtonSet.OK_CANCEL);
+  if (response.getSelectedButton() !== ui.Button.OK) return;
+  
+  const selectedIndex = parseInt(response.getResponseText()) - 1;
+  
+  if (selectedIndex >= 0 && selectedIndex < stores.length) {
+    const selectedStore = stores[selectedIndex];
+    setActiveYandexStore(selectedStore.id);
+    ui.alert('Успех', `Активный Яндекс Маркет магазин изменен на "${selectedStore.name}"`, ui.ButtonSet.OK);
+  } else {
+    ui.alert('Ошибка', 'Неверный номер магазина', ui.ButtonSet.OK);
+  }
+}
+
+/**
+ * Редактирует Яндекс Маркет магазин
+ */
+function editYandexStore() {
+  const stores = getYandexStoresList();
+  
+  if (stores.length === 0) {
+    SpreadsheetApp.getUi().alert('Ошибка', 'Нет доступных Яндекс Маркет магазинов', SpreadsheetApp.getUi().ButtonSet.OK);
+    return;
+  }
+  
+  const ui = SpreadsheetApp.getUi();
+  let message = 'Выберите Яндекс Маркет магазин для редактирования:\n\n';
+  stores.forEach((store, index) => {
+    message += `${index + 1}. ${store.name}\n`;
+  });
+  
+  const response = ui.prompt('Редактировать Яндекс Маркет магазин', message, ui.ButtonSet.OK_CANCEL);
+  if (response.getSelectedButton() !== ui.Button.OK) return;
+  
+  const selectedIndex = parseInt(response.getResponseText()) - 1;
+  
+  if (selectedIndex >= 0 && selectedIndex < stores.length) {
+    const storeToEdit = stores[selectedIndex];
+    
+    // Запрашиваем новые данные
+    const newName = ui.prompt('Редактировать Яндекс Маркет магазин', `Название (текущее: ${storeToEdit.name}):`, ui.ButtonSet.OK_CANCEL);
+    if (newName.getSelectedButton() !== ui.Button.OK) return;
+    
+    const newApiToken = ui.prompt('Редактировать Яндекс Маркет магазин', 'API Token (оставьте пустым чтобы не менять):', ui.ButtonSet.OK_CANCEL);
+    if (newApiToken.getSelectedButton() !== ui.Button.OK) return;
+    
+    const newCampaignId = ui.prompt('Редактировать Яндекс Маркет магазин', `Campaign ID (текущий: ${storeToEdit.campaign_id}):`, ui.ButtonSet.OK_CANCEL);
+    if (newCampaignId.getSelectedButton() !== ui.Button.OK) return;
+    
+    // Обновляем данные
+    if (newName.getResponseText().trim()) {
+      storeToEdit.name = newName.getResponseText().trim();
+    }
+    if (newApiToken.getResponseText().trim()) {
+      storeToEdit.api_token = newApiToken.getResponseText().trim();
+    }
+    if (newCampaignId.getResponseText().trim()) {
+      storeToEdit.campaign_id = newCampaignId.getResponseText().trim();
+    }
+    
+    storeToEdit.updated_at = new Date().toISOString();
+    
+    // Сохраняем изменения
+    saveYandexStoresList(stores);
+    
+    ui.alert('Успех', 'Яндекс Маркет магазин обновлен!', ui.ButtonSet.OK);
+  } else {
+    ui.alert('Ошибка', 'Неверный номер магазина', ui.ButtonSet.OK);
+  }
+}
+
+/**
+ * Удаляет Яндекс Маркет магазин
+ */
+function deleteYandexStore() {
+  const stores = getYandexStoresList();
+  
+  if (stores.length === 0) {
+    SpreadsheetApp.getUi().alert('Ошибка', 'Нет доступных Яндекс Маркет магазинов', SpreadsheetApp.getUi().ButtonSet.OK);
+    return;
+  }
+  
+  const ui = SpreadsheetApp.getUi();
+  let message = 'Выберите Яндекс Маркет магазин для удаления:\n\n';
+  stores.forEach((store, index) => {
+    message += `${index + 1}. ${store.name}\n`;
+  });
+  
+  const response = ui.prompt('Удалить Яндекс Маркет магазин', message, ui.ButtonSet.OK_CANCEL);
+  if (response.getSelectedButton() !== ui.Button.OK) return;
+  
+  const selectedIndex = parseInt(response.getResponseText()) - 1;
+  
+  if (selectedIndex >= 0 && selectedIndex < stores.length) {
+    const storeToDelete = stores[selectedIndex];
+    
+    // Подтверждение удаления
+    const confirm = ui.alert('Подтверждение', `Удалить Яндекс Маркет магазин "${storeToDelete.name}"?`, ui.ButtonSet.YES_NO);
+    if (confirm === ui.Button.YES) {
+      stores.splice(selectedIndex, 1);
+      saveYandexStoresList(stores);
+      
+      // Если удалили активный магазин, выбираем новый
+      const activeStore = getActiveYandexStore();
+      if (!activeStore && stores.length > 0) {
+        setActiveYandexStore(stores[0].id);
+      }
+      
+      ui.alert('Успех', 'Яндекс Маркет магазин удален!', ui.ButtonSet.OK);
     }
   } else {
     ui.alert('Ошибка', 'Неверный номер магазина', ui.ButtonSet.OK);
@@ -1795,45 +2086,19 @@ function exportWBFBOStocksWithLongDelays() {
  */
 function exportWBFBOStocks() {
   try {
+    console.log('Начинаем выгрузку FBO остатков через Statistics API...');
+    
+    // Проверяем, что активный WB магазин настроен
     const config = getWBConfig();
-    
     if (!config.API_KEY) {
-      SpreadsheetApp.getUi().alert('Ошибка', 'Не настроен API ключ для WB магазина!', SpreadsheetApp.getUi().ButtonSet.OK);
+      SpreadsheetApp.getUi().alert('Ошибка', 'Не настроен API ключ для активного WB магазина!', SpreadsheetApp.getUi().ButtonSet.OK);
       return;
     }
     
-    console.log(`Начинаем выгрузку FBO остатков для WB магазина: ${config.STORE_NAME}`);
+    // Используем новую функцию для загрузки всех остатков
+    loadAllStocks();
     
-    const taskId = wbCreateWarehouseRemainsReport_(config.API_KEY);
-    const downloadUrl = wbWaitReportAndGetUrl_(taskId, config.API_KEY);
-    const csv = wbDownloadReportCsv_(taskId, config.API_KEY);
-    const rows = parseCsv_(csv);
-    
-    if (rows.length === 0) {
-      console.log('Нет данных для записи');
-      return;
-    }
-    
-    // Обрабатываем данные
-    const headerMap = normalizeHeaderMap_(rows[0]);
-    const data = rows.slice(1).map(r => ({
-      nmId: pick_(r, headerMap.nmId),
-      supplierArticle: pick_(r, headerMap.supplierArticle),
-      barcode: pick_(r, headerMap.barcode),
-      techSize: pick_(r, headerMap.techSize),
-      warehouseName: pick_(r, headerMap.warehouseName),
-      warehouseId: pick_(r, headerMap.warehouseId),
-      quantity: toNum_(pick_(r, headerMap.quantity)),
-      reserve: toNum_(pick_(r, headerMap.reserve)),
-      inWayToClient: toNum_(pick_(r, headerMap.inWayToClient)),
-      inWayFromClient: toNum_(pick_(r, headerMap.inWayFromClient)),
-      store_name: config.STORE_NAME
-    }));
-    
-    // Записываем в Google Sheets
-    writeWBToGoogleSheets(data);
-    
-    console.log(`Выгрузка WB FBO остатков завершена! Записано товаров: ${data.length}`);
+    console.log('Выгрузка WB FBO остатков через Statistics API завершена!');
     
   } catch (error) {
     console.error('Ошибка при выгрузке WB FBO остатков:', error);
@@ -1842,7 +2107,64 @@ function exportWBFBOStocks() {
 }
 
 /**
- * Выгружает FBO остатки для всех WB магазинов
+ * Выгружает FBO остатки для всех WB магазинов через Statistics API
+ */
+function exportAllWBStoresStocksStatisticsAPI() {
+  try {
+    const stores = getWBStoresList();
+    
+    if (stores.length === 0) {
+      SpreadsheetApp.getUi().alert('Ошибка', 'Нет добавленных WB магазинов!', SpreadsheetApp.getUi().ButtonSet.OK);
+      return;
+    }
+    
+    console.log(`Начинаем выгрузку FBO остатков со всех WB магазинов через Statistics API (${stores.length} магазинов)...`);
+    
+    const originalActiveStore = getActiveWBStore();
+    let totalProcessed = 0;
+    
+    stores.forEach((store, index) => {
+      try {
+        console.log(`Обрабатываем WB магазин ${index + 1}/${stores.length}: ${store.name}`);
+        
+        // Устанавливаем активный магазин
+        setActiveWBStore(store.id);
+        
+        // Добавляем задержку между магазинами для избежания лимитов
+        if (index > 0) {
+          console.log('Ждем 3 секунды перед обработкой следующего магазина...');
+          Utilities.sleep(3000);
+        }
+        
+        // Используем новую функцию для загрузки остатков через Statistics API
+        const allData = loadAllStocksForStore(store);
+        totalProcessed += allData.length;
+        
+        console.log(`  WB магазин "${store.name}" обработан успешно. Получено записей: ${allData.length}`);
+        
+      } catch (error) {
+        console.error(`Ошибка при обработке WB магазина "${store.name}":`, error);
+        // Продолжаем с другими магазинами
+      }
+    });
+    
+    // Восстанавливаем активный магазин
+    if (originalActiveStore) {
+      setActiveWBStore(originalActiveStore.id);
+    }
+    
+    console.log(`Выгрузка со всех WB магазинов завершена! Всего обработано товаров: ${totalProcessed}`);
+    
+    SpreadsheetApp.getUi().alert('Выгрузка завершена', `Обработано ${stores.length} WB магазинов, всего товаров: ${totalProcessed}`, SpreadsheetApp.getUi().ButtonSet.OK);
+    
+  } catch (error) {
+    console.error('Ошибка при выгрузке со всех WB магазинов:', error);
+    throw error;
+  }
+}
+
+/**
+ * Выгружает FBO остатки для всех WB магазинов (старый API с лимитами)
  */
 function exportAllWBStoresStocks() {
   try {
@@ -2936,4 +3258,447 @@ function deleteAllTriggers() {
     ScriptApp.deleteTrigger(trigger);
   });
   console.log('Все триггеры удалены');
+}
+
+// ==================== НОВЫЕ ФУНКЦИИ ДЛЯ WB STATISTICS API ====================
+
+/**
+ * Загружает все остатки FBO через Statistics API
+ */
+function loadAllStocks() {
+  try {
+    Logger.log('Начинаем загрузку всех остатков FBO...');
+    
+    // Получаем конфигурацию активного WB магазина
+    const config = getWBConfig();
+    if (!config.API_KEY) {
+      throw new Error('Не настроен API ключ для активного WB магазина!');
+    }
+
+    const storeName = config.STORE_NAME || 'Неизвестный WB магазин';
+    Logger.log(`Загружаем остатки для магазина: ${storeName}`);
+    Logger.log(`Используем API ключ: ***${config.API_KEY.slice(-4)}`);
+
+    // Загружаем данные для активного магазина
+    const allData = loadAllStocksForStore({ name: storeName, api_key: config.API_KEY });
+    
+    Logger.log('Всего получено остатков: ' + allData.length);
+    writeToSheet(allData);
+    Logger.log('Загрузка всех остатков FBO завершена');
+
+  } catch (error) {
+    Logger.log('Ошибка: ' + error);
+    throw error;
+  }
+}
+
+/**
+ * Загружает все остатки FBO для конкретного магазина через Statistics API
+ */
+function loadAllStocksForStore(store) {
+  try {
+    Logger.log(`Загружаем остатки для магазина: ${store.name}`);
+    Logger.log(`Используем API ключ: ***${store.api_key.slice(-4)}`);
+
+    // Начинаем с «старой» даты, например, 1 год назад или минимальная возможная
+    let dateFrom = '2025-09-01T00:00:00'; // пример начальной даты
+
+    let allData = [];
+    let keepLoading = true;
+
+    while (keepLoading) {
+      Logger.log('Запрос с dateFrom: ' + dateFrom);
+      let batch = fetchStocksBatch(dateFrom, store.api_key);
+      if (batch.length === 0) {
+        keepLoading = false;
+        Logger.log('Все остатки выгружены');
+        break;
+      }
+      
+      // Добавляем информацию о магазине к каждой записи
+      const batchWithStore = batch.map(item => ({
+        ...item,
+        store_name: store.name
+      }));
+      
+      allData = allData.concat(batchWithStore);
+      // Берем lastChangeDate из последней строки
+      dateFrom = batch[batch.length - 1].lastChangeDate;
+      Logger.log('Обработано записей: ' + allData.length);
+      
+      // Добавляем небольшую задержку между запросами для избежания лимитов
+      Utilities.sleep(1000);
+    }
+
+    Logger.log(`Всего получено остатков для ${store.name}: ${allData.length}`);
+    
+    // Записываем данные в лист с названием магазина
+    writeToSheet(allData);
+    
+    return allData;
+
+  } catch (error) {
+    Logger.log('Ошибка: ' + error);
+    throw error;
+  }
+}
+
+/**
+ * Получает порцию данных остатков
+ */
+function fetchStocksBatch(dateFrom, apiToken) {
+  const urlBase = 'https://statistics-api.wildberries.ru/api/v1/supplier/stocks';
+  const url = urlBase + '?dateFrom=' + encodeURIComponent(dateFrom);
+  const options = {
+    method: 'GET',
+    headers: {
+      'Authorization': apiToken,
+      'Content-Type': 'application/json',
+    },
+    muteHttpExceptions: true
+  };
+  Logger.log('Отправляем запрос: ' + url);
+  const response = UrlFetchApp.fetch(url, options);
+  const code = response.getResponseCode();
+  Logger.log('Код ответа: ' + code);
+  if (code !== 200) {
+    throw new Error('API вернул ошибку: ' + code + ' | ' + response.getContentText());
+  }
+  const jsonData = JSON.parse(response.getContentText());
+  return jsonData;
+}
+
+/**
+ * Записывает данные в Google Sheets
+ */
+function writeToSheet(data) {
+  const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  
+  // Получаем название активного WB магазина
+  const activeStore = getActiveWBStore();
+  const storeName = activeStore ? activeStore.name : 'Неизвестный WB магазин';
+  const sheetName = sanitizeSheetName(storeName);
+  
+  console.log(`Создаем/используем лист: ${sheetName}`);
+  
+  let sheet = spreadsheet.getSheetByName(sheetName);
+  if (!sheet) {
+    sheet = spreadsheet.insertSheet(sheetName);
+  }
+  sheet.getRange('A:O').clearContent();
+
+  if (!data || data.length === 0) {
+    sheet.getRange(1, 1).setValue('Данные отсутствуют');
+    return;
+  }
+
+  const headers = [
+    'Магазин', 'lastChangeDate', 'warehouseName', 'supplierArticle', 'nmId', 'barcode',
+    'quantity', 'inWayToClient', 'inWayFromClient',
+    'price', 'discount', 'category', 'subject', 'brand', 'techSize'
+  ];
+
+  sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+  sheet.getRange(1, 1, 1, headers.length)
+    .setFontWeight('bold')
+    .setBackground('#4285f4')
+    .setFontColor('white');
+
+  const rows = data.map(item => [
+    item.store_name || storeName,
+    item.lastChangeDate || '',
+    item.warehouseName || '',
+    item.supplierArticle || '',
+    item.nmId || '',
+    item.barcode || '',
+    item.quantity || 0,
+    item.inWayToClient || '',
+    item.inWayFromClient || '',
+    item.price || '',
+    item.discount || '',
+    item.category || '',
+    item.subject || '',
+    item.brand || '',
+    item.techSize || ''
+  ]);
+
+  sheet.getRange(2, 1, rows.length, headers.length).setValues(rows);
+  sheet.autoResizeColumns(1, headers.length);
+
+  sheet.getRange(rows.length + 3, 1)
+    .setValue('Обновлено: ' + new Date().toLocaleString('ru-RU'));
+}
+
+// ==================== ФУНКЦИИ ДЛЯ РАБОТЫ С ЯНДЕКС МАРКЕТ API ====================
+
+/**
+ * Выгружает остатки для активного Яндекс Маркет магазина
+ */
+function exportYandexStocks() {
+  try {
+    console.log('Начинаем выгрузку остатков Яндекс Маркета...');
+    
+    // Проверяем, что активный Яндекс Маркет магазин настроен
+    const config = getYandexConfig();
+    if (!config.API_TOKEN || !config.CAMPAIGN_ID) {
+      SpreadsheetApp.getUi().alert('Ошибка', 'Не настроен API токен или Campaign ID для активного Яндекс Маркет магазина!', SpreadsheetApp.getUi().ButtonSet.OK);
+      return;
+    }
+    
+    console.log(`Выгружаем остатки для магазина: ${config.STORE_NAME}`);
+    console.log(`Campaign ID: ${config.CAMPAIGN_ID}`);
+    console.log(`API Token: ***${config.API_TOKEN.slice(-4)}`);
+    
+    // Получаем остатки через API
+    const stocks = getYandexStocks(config.API_TOKEN, config.CAMPAIGN_ID);
+    
+    if (stocks.length === 0) {
+      console.log('Нет данных для записи');
+      SpreadsheetApp.getUi().alert('Информация', 'Нет данных об остатках', SpreadsheetApp.getUi().ButtonSet.OK);
+      return;
+    }
+    
+    // Записываем в Google Sheets
+    writeYandexToGoogleSheets(stocks, config.STORE_NAME);
+    
+    console.log(`Выгрузка остатков Яндекс Маркета завершена! Записано товаров: ${stocks.length}`);
+    SpreadsheetApp.getUi().alert('Выгрузка завершена', `Записано товаров: ${stocks.length}`, SpreadsheetApp.getUi().ButtonSet.OK);
+    
+  } catch (error) {
+    console.error('Ошибка при выгрузке остатков Яндекс Маркета:', error);
+    SpreadsheetApp.getUi().alert('Ошибка', `Ошибка выгрузки: ${error.message}`, SpreadsheetApp.getUi().ButtonSet.OK);
+  }
+}
+
+/**
+ * Выгружает остатки для всех Яндекс Маркет магазинов
+ */
+function exportAllYandexStoresStocks() {
+  try {
+    const stores = getYandexStoresList();
+    
+    if (stores.length === 0) {
+      SpreadsheetApp.getUi().alert('Ошибка', 'Нет добавленных Яндекс Маркет магазинов!', SpreadsheetApp.getUi().ButtonSet.OK);
+      return;
+    }
+    
+    console.log(`Начинаем выгрузку остатков со всех Яндекс Маркет магазинов (${stores.length} магазинов)...`);
+    
+    const originalActiveStore = getActiveYandexStore();
+    let totalProcessed = 0;
+    
+    stores.forEach((store, index) => {
+      try {
+        console.log(`Обрабатываем Яндекс Маркет магазин ${index + 1}/${stores.length}: ${store.name}`);
+        
+        // Устанавливаем активный магазин
+        setActiveYandexStore(store.id);
+        
+        // Добавляем задержку между магазинами для избежания лимитов
+        if (index > 0) {
+          console.log('Ждем 2 секунды перед обработкой следующего магазина...');
+          Utilities.sleep(2000);
+        }
+        
+        // Получаем остатки для текущего магазина
+        const stocks = getYandexStocks(store.api_token, store.campaign_id);
+        
+        if (stocks.length > 0) {
+          // Записываем в отдельный лист для этого магазина
+          writeYandexToGoogleSheets(stocks, store.name);
+          totalProcessed += stocks.length;
+        }
+        
+        console.log(`  Яндекс Маркет магазин "${store.name}" обработан успешно. Получено записей: ${stocks.length}`);
+        
+      } catch (error) {
+        console.error(`Ошибка при обработке Яндекс Маркет магазина "${store.name}":`, error);
+        // Продолжаем с другими магазинами
+      }
+    });
+    
+    // Восстанавливаем активный магазин
+    if (originalActiveStore) {
+      setActiveYandexStore(originalActiveStore.id);
+    }
+    
+    console.log(`Выгрузка со всех Яндекс Маркет магазинов завершена! Всего обработано товаров: ${totalProcessed}`);
+    
+    SpreadsheetApp.getUi().alert('Выгрузка завершена', `Обработано ${stores.length} Яндекс Маркет магазинов, всего товаров: ${totalProcessed}`, SpreadsheetApp.getUi().ButtonSet.OK);
+    
+  } catch (error) {
+    console.error('Ошибка при выгрузке со всех Яндекс Маркет магазинов:', error);
+    throw error;
+  }
+}
+
+/**
+ * Получает остатки товаров через Яндекс Маркет API
+ */
+function getYandexStocks(apiToken, campaignId) {
+  try {
+    const url = `https://api.partner.market.yandex.ru/v2/campaigns/${campaignId}/offers/stocks.json`;
+    
+    const options = {
+      method: 'GET',
+      headers: {
+        'Authorization': `OAuth ${apiToken}`,
+        'Content-Type': 'application/json',
+      },
+      muteHttpExceptions: true
+    };
+    
+    console.log(`Отправляем запрос к Яндекс Маркет API: ${url}`);
+    const response = UrlFetchApp.fetch(url, options);
+    const code = response.getResponseCode();
+    console.log(`Код ответа: ${code}`);
+    
+    if (code !== 200) {
+      throw new Error(`API вернул ошибку: ${code} | ${response.getContentText()}`);
+    }
+    
+    const jsonData = JSON.parse(response.getContentText());
+    console.log(`Получено записей: ${jsonData.result?.stocks?.length || 0}`);
+    
+    return jsonData.result?.stocks || [];
+    
+  } catch (error) {
+    console.error('Ошибка при получении остатков Яндекс Маркета:', error);
+    throw error;
+  }
+}
+
+/**
+ * Записывает данные Яндекс Маркета в Google Sheets
+ */
+function writeYandexToGoogleSheets(data, storeName) {
+  const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  
+  // Определяем название листа на основе магазина
+  const sheetName = sanitizeSheetName(storeName);
+  
+  console.log(`Создаем/используем лист: ${sheetName}`);
+  
+  let sheet = spreadsheet.getSheetByName(sheetName);
+  
+  // Создаем лист если не существует
+  if (!sheet) {
+    sheet = spreadsheet.insertSheet(sheetName);
+  }
+  
+  // Очищаем только диапазон с данными
+  const lastRow = sheet.getLastRow();
+  if (lastRow > 0) {
+    const range = sheet.getRange(1, 1, lastRow, 10); // 10 колонок A-J
+    range.clear();
+  }
+  
+  // Заголовки для Яндекс Маркета
+  const headers = [
+    'Магазин',
+    'SKU',
+    'Название товара',
+    'Остаток',
+    'Обновлено',
+    'Склад',
+    'Тип остатка',
+    'Доступно',
+    'Зарезервировано',
+    'В пути'
+  ];
+  
+  // Записываем заголовки
+  sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+  
+  // Форматируем заголовки
+  const headerRange = sheet.getRange(1, 1, 1, headers.length);
+  headerRange.setFontWeight('bold');
+  headerRange.setBackground('#E8F0FE');
+  
+  if (data.length === 0) {
+    console.log('Нет данных для записи');
+    return;
+  }
+  
+  // Подготавливаем данные
+  const rows = data.map(item => [
+    storeName,
+    item.sku || '',
+    item.name || '',
+    item.count || 0,
+    item.updatedAt || '',
+    item.warehouse?.name || '',
+    item.type || '',
+    item.available || 0,
+    item.reserved || 0,
+    item.inTransit || 0
+  ]);
+  
+  // Записываем данные
+  if (rows.length > 0) {
+    try {
+      const dataRange = sheet.getRange(2, 1, rows.length, headers.length);
+      dataRange.setValues(rows);
+      
+      // Добавляем фильтр только если есть данные
+      const filterRange = sheet.getRange(1, 1, rows.length + 1, headers.length);
+      filterRange.createFilter();
+      
+      console.log(`Записано ${rows.length} строк в Google Таблицы`);
+    } catch (error) {
+      console.error('Ошибка при записи данных:', error);
+      throw error;
+    }
+  } else {
+    console.log('Нет данных для записи');
+  }
+}
+
+/**
+ * Тестирует подключение к Яндекс Маркет API
+ */
+function testYandexConnection() {
+  try {
+    const config = getYandexConfig();
+    
+    if (!config.API_TOKEN || !config.CAMPAIGN_ID) {
+      SpreadsheetApp.getUi().alert('Ошибка', 'Не настроен API токен или Campaign ID для Яндекс Маркет магазина!', SpreadsheetApp.getUi().ButtonSet.OK);
+      return;
+    }
+    
+    console.log(`Тестируем подключение к Яндекс Маркет API для магазина: ${config.STORE_NAME}`);
+    console.log(`Campaign ID: ${config.CAMPAIGN_ID}`);
+    console.log(`API Token: ***${config.API_TOKEN.slice(-4)}`);
+    
+    // Тестируем получение информации о кампании
+    const url = `https://api.partner.market.yandex.ru/v2/campaigns/${config.CAMPAIGN_ID}.json`;
+    
+    const options = {
+      method: 'GET',
+      headers: {
+        'Authorization': `OAuth ${config.API_TOKEN}`,
+        'Content-Type': 'application/json',
+      },
+      muteHttpExceptions: true
+    };
+    
+    console.log(`Отправляем тестовый запрос: ${url}`);
+    const response = UrlFetchApp.fetch(url, options);
+    const code = response.getResponseCode();
+    const responseText = response.getContentText();
+    
+    console.log(`Код ответа: ${code}`);
+    console.log(`Ответ: ${responseText}`);
+    
+    if (code === 200) {
+      const data = JSON.parse(responseText);
+      SpreadsheetApp.getUi().alert('Успех', `Подключение к Яндекс Маркет API успешно!\n\nКампания: ${data.result?.campaign?.domain || 'Неизвестно'}\nСтатус: ${data.result?.campaign?.status || 'Неизвестно'}`, SpreadsheetApp.getUi().ButtonSet.OK);
+    } else {
+      SpreadsheetApp.getUi().alert('Ошибка', `Ошибка подключения к Яндекс Маркет API!\n\nКод: ${code}\nОтвет: ${responseText}`, SpreadsheetApp.getUi().ButtonSet.OK);
+    }
+    
+  } catch (error) {
+    console.error('Ошибка при тестировании подключения к Яндекс Маркет API:', error);
+    SpreadsheetApp.getUi().alert('Ошибка', `Ошибка тестирования: ${error.message}`, SpreadsheetApp.getUi().ButtonSet.OK);
+  }
 }
