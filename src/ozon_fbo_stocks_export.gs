@@ -3738,12 +3738,12 @@ function testYandexConnection() {
     console.log(`API Token: ***${config.API_TOKEN.slice(-4)}`);
     
     // Тестируем получение информации о кампании
-    const url = `https://api.partner.market.yandex.ru/v2/campaigns/${config.CAMPAIGN_ID}.json`;
+    const url = `https://api.partner.market.yandex.ru/campaigns/${config.CAMPAIGN_ID}`;
     
     const options = {
       method: 'GET',
       headers: {
-        'Authorization': `OAuth ${config.API_TOKEN}`,
+        'Api-Key': config.API_TOKEN,
         'Content-Type': 'application/json',
       },
       muteHttpExceptions: true
@@ -3759,7 +3759,11 @@ function testYandexConnection() {
     
     if (code === 200) {
       const data = JSON.parse(responseText);
-      SpreadsheetApp.getUi().alert('Успех', `Подключение к Яндекс Маркет API успешно!\n\nКампания: ${data.result?.campaign?.domain || 'Неизвестно'}\nСтатус: ${data.result?.campaign?.status || 'Неизвестно'}`, SpreadsheetApp.getUi().ButtonSet.OK);
+      if (data.status === "OK" && data.result) {
+        SpreadsheetApp.getUi().alert('Успех', `Подключение к Яндекс Маркет API успешно!\n\nКампания: ${data.result.domain || 'Неизвестно'}\nСтатус: ${data.result.status || 'Неизвестно'}`, SpreadsheetApp.getUi().ButtonSet.OK);
+      } else {
+        SpreadsheetApp.getUi().alert('Ошибка', `API вернул ошибку: ${data.errors ? JSON.stringify(data.errors) : 'статус ' + data.status}`, SpreadsheetApp.getUi().ButtonSet.OK);
+      }
     } else {
       SpreadsheetApp.getUi().alert('Ошибка', `Ошибка подключения к Яндекс Маркет API!\n\nКод: ${code}\nОтвет: ${responseText}`, SpreadsheetApp.getUi().ButtonSet.OK);
     }
