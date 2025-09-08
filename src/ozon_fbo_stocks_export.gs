@@ -3534,7 +3534,7 @@ function exportAllYandexStoresStocks() {
 }
 
 /**
- * Получает остатки товаров через Яндекс Маркет API (обновленная версия)
+ * Получает остатки товаров через Яндекс Маркет API (точная копия рабочего скрипта)
  */
 function getYandexStocks(apiToken, campaignId) {
   try {
@@ -3543,7 +3543,7 @@ function getYandexStocks(apiToken, campaignId) {
     // URL для получения списка складов
     const warehousesUrl = "https://api.partner.market.yandex.ru/warehouses";
     
-    // Заголовки HTTP для авторизации
+    // Заголовки HTTP для авторизации: используем Api Key токен
     const headers = {
       "Api-Key": apiToken
     };
@@ -3574,6 +3574,7 @@ function getYandexStocks(apiToken, campaignId) {
       "withTurnover": false
     };
     
+    // Опции для UrlFetchApp (POST запрос с JSON-телом)
     const options = {
       "method": "post",
       "contentType": "application/json",
@@ -3581,7 +3582,7 @@ function getYandexStocks(apiToken, campaignId) {
       "payload": JSON.stringify(requestBody)
     };
     
-    // Выполняем запрос к API с постраничной загрузкой
+    // Выполняем запрос к API и обрабатываем данные с постраничной загрузкой
     const allStocks = [];
     let pageToken = null;
     
@@ -3606,24 +3607,21 @@ function getYandexStocks(apiToken, campaignId) {
         throw new Error("Ошибка при получении остатков: " + (data.errors ? JSON.stringify(data.errors) : "статус " + data.status));
       }
       
-      // Обрабатываем полученные данные
+      // Обрабатываем полученные данные: проходим по каждому складу и каждому товару
       const warehouses = data.result.warehouses;
       warehouses.forEach(function (warehouse) {
         const warehouseId = warehouse.warehouseId;
-        const warehouseName = warehouseMap[warehouseId] || "";
-        
+        const warehouseName = warehouseMap[warehouseId] || "";  // название склада (если удалось получить)
         warehouse.offers.forEach(function (offer) {
-          const sku = offer.offerId;
-          const stocks = offer.stocks;
-          
-          // Инициализируем переменные для основных типов остатков
+          const sku = offer.offerId;               // SKU товара (идентификатор товара у продавца)
+          const stocks = offer.stocks;             // массив остатков по типам (FIT, AVAILABLE, и т.д.)
+          // Инициализируем переменные для основных типов остатков:
           let totalFit = 0, available = 0, reserved = 0;
           stocks.forEach(function (stock) {
             if (stock.type === "FIT") totalFit = stock.count;
             if (stock.type === "AVAILABLE") available = stock.count;
             if (stock.type === "FREEZE") reserved = stock.count;
           });
-          
           // Добавляем данные в результат
           allStocks.push({
             sku: sku,
@@ -3636,9 +3634,8 @@ function getYandexStocks(apiToken, campaignId) {
         });
       });
       
-      // Получаем токен следующей страницы
+      // Получаем токен следующей страницы (если он есть)
       pageToken = data.result.paging && data.result.paging.nextPageToken ? data.result.paging.nextPageToken : null;
-      
     } while (pageToken);
     
     console.log(`Получено записей: ${allStocks.length}`);
