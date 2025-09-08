@@ -3773,30 +3773,135 @@ function testYandexConnection() {
 }
 
 /**
- * Быстрый тест с вашими токенами (для отладки)
+ * Быстрый тест с вашими токенами (точная копия рабочего скрипта)
  */
 function testYandexWithYourTokens() {
   try {
-    const API_TOKEN = "ACMA:b0BKJAZYstQEOJf5sYDNyOlEONs3cGcrTYprLMZi:bb8c04d4";
-    const CAMPAIGN_ID = 89101200;
-    
+    // === НАСТРОЙКИ: введите свои параметры ниже ===
+    const API_TOKEN = "ACMA:b0BKJAZYstQEOJf5sYDNyOlEONs3cGcrTYprLMZi:bb8c04d4";       // Авторизационный токен API Яндекс.Маркета (Api Key или OAuth)
+    const CAMPAIGN_ID = 89101200;             // Идентификатор вашего магазина (campaignId) на Маркете (число)
+    const SHEET_NAME = "YM MR";      // Название листа Google Таблицы для вывода остатков
+
     console.log('Тестируем с вашими токенами...');
     console.log(`Campaign ID: ${CAMPAIGN_ID}`);
     console.log(`API Token: ***${API_TOKEN.slice(-4)}`);
-    
-    // Получаем остатки
-    const stocks = getYandexStocks(API_TOKEN, CAMPAIGN_ID);
-    
-    if (stocks.length > 0) {
-      console.log(`Получено ${stocks.length} записей остатков`);
-      
-      // Записываем в лист "YM MR" как в оригинальном скрипте
-      writeYandexToGoogleSheets(stocks, "YM MR");
-      
-      SpreadsheetApp.getUi().alert('Успех', `Получено и записано ${stocks.length} записей остатков в лист "YM MR"`, SpreadsheetApp.getUi().ButtonSet.OK);
-    } else {
-      SpreadsheetApp.getUi().alert('Информация', 'Нет данных об остатках', SpreadsheetApp.getUi().ButtonSet.OK);
+
+    // Получаем объект листа по названию
+    const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+    let sheet = spreadsheet.getSheetByName(SHEET_NAME);
+    if (!sheet) {
+      // Если лист не найден, создаем его
+      sheet = spreadsheet.insertSheet(SHEET_NAME);
+      console.log(`Создан лист: ${SHEET_NAME}`);
     }
+    
+    // Очищаем только диапазон E:J (данные остатков)
+    const lastRow = sheet.getLastRow();
+    if (lastRow > 0) {
+      sheet.getRange(1, 5, lastRow, 6).clearContent(); // столбцы E–J
+    }
+
+    // --- 1) Определяем URL и заголовки для API-запросов ---
+    // Базовый URL для получения остатков:
+    const stocksUrl = "https://api.partner.market.yandex.ru/campaigns/" + CAMPAIGN_ID + "/offers/stocks";
+    // (Опционально) URL для получения списка складов (чтобы сопоставить ID с названиями):
+    const warehousesUrl = "https://api.partner.market.yandex.ru/warehouses";
+
+    // Заголовки HTTP для авторизации: используем Api Key токен
+    const headers = {
+      "Api-Key": API_TOKEN
+    };
+
+    // --- 2) Получаем справочник складов Маркета (FBY) ---
+    const warehouseMap = {};  // словарь для сопоставления warehouseId -> name
+    try {
+      const whResponse = UrlFetchApp.fetch(warehousesUrl, { "method": "get", "headers": headers });
+      const whData = JSON.parse(whResponse.getContentText());
+      if (whData.status == "OK" && whData.result && whData.result.warehouses) {
+        whData.result.warehouses.forEach(function (w) {
+          warehouseMap[w.id] = w.name;
+        });
+        console.log(`Получено складов: ${Object.keys(warehouseMap).length}`);
+      }
+    } catch (e) {
+      console.log("Не удалось получить список складов: " + e);
+    }
+
+    // --- 3) Подготовка тела запроса для получения остатков товаров ---
+    // Запросим **все неархивные товары** с учетом FBY-складов. 
+    // withTurnover:false означает, что показатели оборачиваемости можно не включать.
+    const requestBody = {
+      "archived": false,
+      "withTurnover": false
+    };
+
+    // Опции для UrlFetchApp (POST запрос с JSON-телом)
+    const options = {
+      "method": "post",
+      "contentType": "application/json",
+      "headers": headers,
+      "payload": JSON.stringify(requestBody)
+    };
+
+    // --- 4) Выполняем запрос к API и обрабатываем данные с постраничной загрузкой ---
+    const rows = [];  // массив для строк, которые запишем в таблицу
+    // Добавим заголовок столбцов (для удобства)
+    rows.push(["SKU товара", "ID склада", "Название склада", "Всего (FIT)", "Доступно (AVAILABLE)", "Резерв (FREEZE)"]);
+
+    let pageToken = null;
+    do {
+      // Если есть токен следующей страницы, добавляем его к телу запроса
+      if (pageToken) {
+        requestBody.page_token = pageToken;
+        options.payload = JSON.stringify(requestBody);
+      }
+      // Выполняем API-запрос за текущей страницей остатков
+      const response = UrlFetchApp.fetch(stocksUrl, options);
+      const code = response.getResponseCode();
+      console.log(`Код ответа: ${code}`);
+      
+      if (code !== 200) {
+        throw new Error(`API вернул ошибку: ${code} | ${response.getContentText()}`);
+      }
+      
+      const data = JSON.parse(response.getContentText());
+      if (data.status != "OK" || !data.result) {
+        throw new Error("Ошибка при получении остатков: " + (data.errors ? JSON.stringify(data.errors) : "статус " + data.status));
+      }
+
+      // Обрабатываем полученные данные: проходим по каждому складу и каждому товару
+      const warehouses = data.result.warehouses;
+      warehouses.forEach(function (warehouse) {
+        const warehouseId = warehouse.warehouseId;
+        const warehouseName = warehouseMap[warehouseId] || "";  // название склада (если удалось получить)
+        warehouse.offers.forEach(function (offer) {
+          const sku = offer.offerId;               // SKU товара (идентификатор товара у продавца)
+          const stocks = offer.stocks;             // массив остатков по типам (FIT, AVAILABLE, и т.д.)
+          // Инициализируем переменные для основных типов остатков:
+          let totalFit = 0, available = 0, reserved = 0;
+          stocks.forEach(function (stock) {
+            if (stock.type === "FIT") totalFit = stock.count;
+            if (stock.type === "AVAILABLE") available = stock.count;
+            if (stock.type === "FREEZE") reserved = stock.count;
+          });
+          // Добавляем строку в результаты
+          rows.push([sku, warehouseId, warehouseName, totalFit, available, reserved]);
+        });
+      });
+
+      // Получаем токен следующей страницы (если он есть)
+      pageToken = data.result.paging && data.result.paging.nextPageToken ? data.result.paging.nextPageToken : null;
+    } while (pageToken);
+
+    // --- 5) Записываем все собранные строки на лист таблицы ---
+    if (rows.length > 0) {
+      sheet.getRange(1, 5, rows.length, rows[0].length).setValues(rows);
+    }
+    
+    const totalRows = rows.length - 1; // -1 для заголовка
+    console.log(`YM MR: загружено ${totalRows} строк (вкл. заголовки)`);
+    
+    SpreadsheetApp.getUi().alert('Успех', `Получено и записано ${totalRows} записей остатков в лист "YM MR"`, SpreadsheetApp.getUi().ButtonSet.OK);
     
   } catch (error) {
     console.error('Ошибка при тестировании:', error);
