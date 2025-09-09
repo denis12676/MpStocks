@@ -4255,27 +4255,17 @@ function exportYandexPrices() {
     throw new Error('Не заданы токен и campaign_id Яндекс Маркета. Добавьте магазин.');
   }
 
-  // Читаем SKU из листа магазина (ищем колонку 'SKU товара', fallback — колонка B)
+  // Получаем ВСЕ SKU из кабинета через offer-mappings и затем цены
+  const allSkus = fetchAllYandexShopSkus(token, campaignId);
+  if (allSkus.length === 0) {
+    throw new Error('Не удалось получить список артикулов (SKU) из кабинета Яндекс Маркета.');
+  }
+  const pricesMap = fetchYandexPricesBySkus(token, campaignId, allSkus);
+
   const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
   const sheetName = sanitizeSheetName(config.STORE_NAME || 'Яндекс Маркет');
   const sheet = spreadsheet.getSheetByName(sheetName) || spreadsheet.insertSheet(sheetName);
-  const header = sheet.getRange(1, 1, 1, sheet.getMaxColumns()).getValues()[0];
-  let skuCol = header.findIndex(v => String(v).toLowerCase() === 'sku товара');
-  if (skuCol === -1) skuCol = 2 - 1; // B как запасной вариант
-  const lastRow = sheet.getLastRow();
-  if (lastRow < 2) {
-    throw new Error('Лист магазина пуст. Сначала выгрузите остатки Яндекс Маркета.');
-  }
-  const skus = sheet.getRange(2, skuCol + 1, lastRow - 1, 1).getValues()
-    .map(r => String(r[0] || '').trim())
-    .filter(Boolean);
-  if (skus.length === 0) {
-    throw new Error('Не найдено ни одного SKU для Яндекс Маркета.');
-  }
-
-  // Получаем цены пачками через Маркет API методом business-prices (assuming Open API: GET/POST v2/campaigns/{id}/offer-prices)
-  const pricesMap = fetchYandexPricesBySkus(token, campaignId, skus);
-  writeYandexPricesToSheetT(sheet, pricesMap);
+  writeYandexPricesToSheetT(sheet, pricesMap, allSkus);
 }
 
 function fetchYandexPricesBySkus(token, campaignId, skus) {
@@ -4315,23 +4305,15 @@ function fetchYandexPricesBySkus(token, campaignId, skus) {
   return map;
 }
 
-function writeYandexPricesToSheetT(sheet, pricesMap) {
+function writeYandexPricesToSheetT(sheet, pricesMap, orderSkus) {
   const startCol = 20; // T
   const headers = ['SKU', 'Цена, ₽', 'Старая цена, ₽', 'Валюта'];
   sheet.getRange(1, startCol, 1, headers.length).setValues([headers]);
   sheet.getRange(1, startCol, 1, headers.length).setFontWeight('bold').setBackground('#FFF3CD');
 
-  const lastRow = sheet.getLastRow();
-  if (lastRow < 2) return;
-
-  // Ищем колонку SKU товара
-  const header = sheet.getRange(1, 1, 1, sheet.getMaxColumns()).getValues()[0];
-  let skuCol = header.findIndex(v => String(v).toLowerCase() === 'sku товара');
-  if (skuCol === -1) skuCol = 2 - 1; // B
-
-  const skus = sheet.getRange(2, skuCol + 1, lastRow - 1, 1).getValues().map(r => String(r[0] || '').trim());
   const rows = [];
-  for (const sku of skus) {
+  const source = Array.isArray(orderSkus) && orderSkus.length ? orderSkus : [];
+  for (const sku of source) {
     const p = pricesMap.get(sku);
     if (p) rows.push([sku, p.price || '', p.old_price || '', p.currency || 'RUB']);
     else rows.push([sku, '', '', 'RUB']);
@@ -4339,6 +4321,46 @@ function writeYandexPricesToSheetT(sheet, pricesMap) {
   sheet.getRange(2, startCol, rows.length, headers.length).setValues(rows);
   sheet.autoResizeColumns(startCol, headers.length);
   sheet.getRange(rows.length + 3, startCol).setValue('Цены Яндекс Маркета обновлены: ' + new Date().toLocaleString('ru-RU'));
+}
+
+/**
+ * Получить все shopSku из кабинета Маркета (offer-mappings) с пагинацией
+ */
+function fetchAllYandexShopSkus(token, campaignId) {
+  const base = 'https://api.partner.market.yandex.ru';
+  const headers = {
+    'Authorization': 'OAuth ' + token,
+    'Content-Type': 'application/json'
+  };
+  const url = `${base}/v2/campaigns/${encodeURIComponent(campaignId)}/offer-mappings`;
+  const limit = 200;
+  let pageToken = '';
+  const result = [];
+  let page = 0;
+  do {
+    const body = { limit, page_token: pageToken };
+    try {
+      const resp = UrlFetchApp.fetch(url, { method: 'post', headers, muteHttpExceptions: true, payload: JSON.stringify(body) });
+      const code = resp.getResponseCode();
+      if (code >= 200 && code < 300) {
+        const data = JSON.parse(resp.getContentText());
+        const mappings = (data && data.result && (data.result.offerMappings || data.result.mappings)) || data.offerMappings || data.mappings || [];
+        for (const m of mappings) {
+          const sku = String((m.offer && (m.offer.shopSku || m.offer.sku)) || m.shopSku || m.sku || '').trim();
+          if (sku) result.push(sku);
+        }
+        pageToken = (data && data.result && data.result.page_token) || data.page_token || '';
+      } else {
+        break;
+      }
+    } catch (e) {
+      break;
+    }
+    page++;
+    Utilities.sleep(120);
+    if (page > 5000) break;
+  } while (pageToken);
+  return Array.from(new Set(result));
 }
 
 /**
