@@ -1262,7 +1262,13 @@ function exportOzonPrices() {
     throw new Error('Не настроены API ключи Ozon. Добавьте магазин.');
   }
 
-  const prices = fetchAllOzonPricesV4();
+  // Читаем offer_id из листа активного магазина и вытягиваем цены батчами
+  const offerIds = getOfferIdsFromActiveStoreSheet();
+  if (offerIds.length === 0) {
+    throw new Error('Не найден ни один offer_id на листе магазина. Сначала выгрузите остатки.');
+  }
+
+  const prices = fetchOzonPricesByOfferIds(offerIds);
   writePricesToSheetT(prices);
 }
 
