@@ -1406,7 +1406,7 @@ function writePricesToSheetT(prices) {
   // Обновляем заголовки T:Z (или дальше), не трогаем A:S
   const headerRow = 1;
   const startCol = 20; // T
-  const headers = ['Цена, ₽', 'Старая цена, ₽', 'Мин. цена, ₽', 'Валюта', 'Сопоставление по offer_id'];
+  const headers = ['offer_id', 'Цена, ₽', 'Старая цена, ₽', 'Мин. цена, ₽', 'Валюта'];
   sheet.getRange(headerRow, startCol, 1, headers.length).setValues([headers]);
   sheet.getRange(headerRow, startCol, 1, headers.length).setFontWeight('bold').setBackground('#FFF3CD');
 
@@ -1445,14 +1445,14 @@ function writePricesToSheetT(prices) {
     const p = byOffer[offerId];
     if (p) {
       rowsToWrite.push([
+        offerId,
         p.price != null ? p.price : '',
         p.old_price != null ? p.old_price : '',
         p.min_price != null ? p.min_price : '',
-        p.currency_code || '',
-        offerId
+        p.currency_code || ''
       ]);
     } else {
-      rowsToWrite.push(['', '', '', '', offerId]);
+      rowsToWrite.push([offerId, '', '', '', '']);
     }
   }
 
