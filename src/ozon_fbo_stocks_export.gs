@@ -4254,18 +4254,12 @@ function exportYandexPrices() {
   if (!token || !campaignId) {
     throw new Error('Не заданы токен и campaign_id Яндекс Маркета. Добавьте магазин.');
   }
-
-  // Получаем ВСЕ SKU из кабинета через offer-mappings и затем цены
-  const allSkus = fetchAllYandexShopSkus(token, campaignId);
-  if (allSkus.length === 0) {
-    throw new Error('Не удалось получить список артикулов (SKU) из кабинета Яндекс Маркета.');
-  }
-  const pricesMap = fetchYandexPricesBySkus(token, campaignId, allSkus);
-
+  // Получаем все цены напрямую из offer-prices (GET с пагинацией)
+  const allOffers = fetchAllYandexPrices(token, campaignId);
   const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
   const sheetName = sanitizeSheetName(config.STORE_NAME || 'Яндекс Маркет');
   const sheet = spreadsheet.getSheetByName(sheetName) || spreadsheet.insertSheet(sheetName);
-  writeYandexPricesToSheetT(sheet, pricesMap, allSkus);
+  writeYandexAllPricesToSheetT(sheet, allOffers);
 }
 
 function fetchYandexPricesBySkus(token, campaignId, skus) {
