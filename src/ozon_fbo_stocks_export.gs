@@ -4299,6 +4299,70 @@ function fetchYandexPricesBySkus(token, campaignId, skus) {
   return map;
 }
 
+/**
+ * Пагинированная выгрузка всех цен через GET offer-prices
+ */
+function fetchAllYandexPrices(token, campaignId) {
+  const base = 'https://api.partner.market.yandex.ru';
+  const headers = {
+    'Authorization': 'OAuth ' + token,
+    'Content-Type': 'application/json'
+  };
+  const urls = [
+    (pageToken, limit) => `${base}/campaigns/${encodeURIComponent(campaignId)}/offer-prices?limit=${limit}${pageToken ? `&page_token=${encodeURIComponent(pageToken)}` : ''}`,
+    (pageToken, limit) => `${base}/v2/campaigns/${encodeURIComponent(campaignId)}/offer-prices?limit=${limit}${pageToken ? `&page_token=${encodeURIComponent(pageToken)}` : ''}`
+  ];
+
+  const limit = 1000;
+  let pageToken = '';
+  const all = [];
+  let page = 0;
+  do {
+    let resp = null;
+    for (const makeUrl of urls) {
+      try {
+        const url = makeUrl(pageToken, limit);
+        const r = UrlFetchApp.fetch(url, { method: 'get', headers, muteHttpExceptions: true });
+        const code = r.getResponseCode();
+        if (code >= 200 && code < 300) {
+          resp = JSON.parse(r.getContentText());
+          break;
+        }
+      } catch (e) {}
+    }
+    if (!resp) break;
+    const offers = (resp && resp.result && resp.result.offers) || resp.offers || [];
+    for (const offer of offers) {
+      const sku = String(offer.offerId || offer.id || offer.shopSku || offer.sku || '').trim();
+      const priceObj = offer.price || {};
+      const price = Number(priceObj.value || 0) || '';
+      const currency = priceObj.currencyId || priceObj.currency || 'RUR';
+      const discountBase = Number(priceObj.discountBase || 0) || '';
+      all.push({ sku, price, old_price: discountBase, currency });
+    }
+    pageToken = (resp && resp.result && resp.result.paging && resp.result.paging.nextPageToken) || resp.nextPageToken || '';
+    page++;
+    Utilities.sleep(120);
+    if (page > 5000) break;
+  } while (pageToken);
+
+  return all;
+}
+
+function writeYandexAllPricesToSheetT(sheet, offers) {
+  const startCol = 20; // T
+  const headers = ['SKU', 'Цена, ₽', 'Старая цена, ₽', 'Валюта'];
+  sheet.getRange(1, startCol, 1, headers.length).setValues([headers]);
+  sheet.getRange(1, startCol, 1, headers.length).setFontWeight('bold').setBackground('#FFF3CD');
+
+  const rows = offers.map(o => [o.sku, o.price, o.old_price, o.currency || 'RUR']);
+  if (rows.length > 0) {
+    sheet.getRange(2, startCol, rows.length, headers.length).setValues(rows);
+  }
+  sheet.autoResizeColumns(startCol, headers.length);
+  sheet.getRange(rows.length + 3, startCol).setValue('Цены Яндекс Маркета (все) обновлены: ' + new Date().toLocaleString('ru-RU'));
+}
+
 function writeYandexPricesToSheetT(sheet, pricesMap, orderSkus) {
   const startCol = 20; // T
   const headers = ['SKU', 'Цена, ₽', 'Старая цена, ₽', 'Валюта'];
