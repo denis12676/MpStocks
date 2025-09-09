@@ -1200,6 +1200,138 @@ function callOzonAPI(path, body, headers) {
   return text ? JSON.parse(text) : {};
 }
 
+// ==================== WB ЦЕНЫ ====================
+
+/**
+ * Выгрузить цены для активного WB магазина и записать в лист с колонки T
+ */
+function exportWBPrices() {
+  const config = getWBConfig();
+  if (!config.API_KEY) {
+    throw new Error('Для WB не задан API_KEY. Добавьте WB магазин или задайте ключ.');
+  }
+
+  const prices = fetchWBPrices(config.API_KEY);
+  writeWBPricesToSheetT(prices, config.STORE_NAME);
+}
+
+/**
+ * Получает список цен из WB API. Спекуляция: основной путь — /public/api/v1/info,
+ * фоллбек — /public/api/v1/prices (если доступен у аккаунта).
+ */
+function fetchWBPrices(apiKey) {
+  const base = 'https://suppliers-api.wildberries.ru';
+  const headers = {
+    'Authorization': apiKey
+  };
+
+  // Пытаемся получить текущие цены и скидки
+  // Вариант 1: /public/api/v1/info?quantity=0 — часто доступен и содержит priceU/salePriceU
+  try {
+    const url = base + '/public/api/v1/info?quantity=0';
+    const resp = UrlFetchApp.fetch(url, { method: 'get', headers: headers, muteHttpExceptions: true });
+    const code = resp.getResponseCode();
+    if (code >= 200 && code < 300) {
+      const data = JSON.parse(resp.getContentText());
+      if (Array.isArray(data)) {
+        return data.map(item => {
+          // priceU/salePriceU в копейках
+          const supplierArticle = item.supplierArticle || item.supplier_article || '';
+          const priceU = Number(item.priceU || 0);
+          const salePriceU = Number(item.salePriceU || 0);
+          return {
+            supplierArticle: supplierArticle,
+            price: salePriceU ? Math.round(salePriceU / 100) : '',
+            old_price: priceU ? Math.round(priceU / 100) : '',
+            min_price: '',
+            currency: 'RUB'
+          };
+        });
+      }
+    }
+  } catch (e) {
+    // перейдем к фоллбеку
+  }
+
+  // Вариант 2 (фоллбек): /public/api/v1/prices — некоторые аккаунты имеют этот метод
+  try {
+    const url = base + '/public/api/v1/prices';
+    const resp = UrlFetchApp.fetch(url, { method: 'get', headers: headers, muteHttpExceptions: true });
+    const code = resp.getResponseCode();
+    if (code >= 200 && code < 300) {
+      const data = JSON.parse(resp.getContentText());
+      if (Array.isArray(data)) {
+        return data.map(item => {
+          const supplierArticle = item.supplierArticle || item.supplier_article || '';
+          const priceU = Number(item.priceU || 0);
+          const salePriceU = Number(item.salePriceU || 0);
+          return {
+            supplierArticle: supplierArticle,
+            price: salePriceU ? Math.round(salePriceU / 100) : '',
+            old_price: priceU ? Math.round(priceU / 100) : '',
+            min_price: '',
+            currency: 'RUB'
+          };
+        });
+      }
+    }
+  } catch (e) {
+    // игнор
+  }
+
+  return [];
+}
+
+/**
+ * Запись цен WB в лист магазина, начиная с T. Сопоставление по 'Артикул поставщика'.
+ */
+function writeWBPricesToSheetT(prices, storeName) {
+  const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  const sheetName = sanitizeSheetName(storeName || 'WB Магазин');
+  let sheet = spreadsheet.getSheetByName(sheetName) || spreadsheet.insertSheet(sheetName);
+
+  const headerRow = 1;
+  const startCol = 20; // T
+  const headers = ['Артикул поставщика', 'Цена, ₽', 'Старая цена, ₽', 'Мин. цена, ₽', 'Валюта'];
+  sheet.getRange(headerRow, startCol, 1, headers.length).setValues([headers]);
+  sheet.getRange(headerRow, startCol, 1, headers.length).setFontWeight('bold').setBackground('#FFF3CD');
+
+  if (!prices || prices.length === 0) {
+    return;
+  }
+
+  // map по supplierArticle
+  const bySa = {};
+  prices.forEach(p => { if (p.supplierArticle) bySa[p.supplierArticle] = p; });
+
+  // Ищем колонку 'Артикул поставщика' в шапке WB листа
+  let saCol = 3; // по умолчанию C, как в наших WB заголовках
+  try {
+    const firstRow = sheet.getRange(1, 1, 1, sheet.getMaxColumns()).getValues()[0];
+    const idx = firstRow.findIndex(v => String(v).toLowerCase() === 'артикул поставщика');
+    if (idx >= 0) saCol = idx + 1;
+  } catch (e) {}
+
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return;
+
+  const saValues = sheet.getRange(2, saCol, lastRow - 1, 1).getValues();
+  const rows = [];
+  for (let i = 0; i < saValues.length; i++) {
+    const sa = (saValues[i][0] || '').toString().trim();
+    const p = bySa[sa];
+    if (p) {
+      rows.push([sa, p.price || '', p.old_price || '', p.min_price || '', p.currency || 'RUB']);
+    } else {
+      rows.push([sa, '', '', '', 'RUB']);
+    }
+  }
+
+  sheet.getRange(2, startCol, rows.length, headers.length).setValues(rows);
+  sheet.autoResizeColumns(startCol, headers.length);
+  sheet.getRange(rows.length + 3, startCol).setValue('Цены WB обновлены: ' + new Date().toLocaleString('ru-RU'));
+}
+
 /**
  * Получает цены товаров Ozon с пагинацией v4
  */
