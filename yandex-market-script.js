@@ -214,82 +214,84 @@ function getCampaigns() {
  * Формирование заголовков авторизации
  */
 function getAuthHeaders() {
-  if (USE_API_KEY) {
-    return {
-      'Authorization': `Api-Key ${API_TOKEN}`,
-      'Content-Type': 'application/json'
-    };
-  } else {
-    return {
-      'Authorization': `OAuth oauth_token="${API_TOKEN}", oauth_client_id="${OAUTH_CLIENT_ID}"`,
-      'Content-Type': 'application/json'
-    };
+  const cfg = getYandexConfig ? getYandexConfig() : null;
+  const token = cfg && (cfg.API_TOKEN || cfg.API_KEY || cfg.apiKey);
+  // Пытаемся все популярные варианты: вернём массив заголовков, а не один
+  const candidates = [];
+  if (token) {
+    candidates.push({ 'Authorization': `Api-Key ${token}`, 'Content-Type': 'application/json' });
+    candidates.push({ 'Authorization': `OAuth oauth_token="${token}"`, 'Content-Type': 'application/json' });
+    candidates.push({ 'Authorization': `OAuth ${token}`, 'Content-Type': 'application/json' });
   }
+  return candidates.length ? candidates : [{ 'Content-Type': 'application/json' }];
 }
 
 /**
  * Запрос к API для получения всех цен
  */
 function fetchPricesFromAPI(pageToken = null, limit = 1000) {
-  let url = `https://api.partner.market.yandex.ru/campaigns/${CAMPAIGN_ID}/offer-prices`;
-  
+  const cfg = getYandexConfig ? getYandexConfig() : null;
+  const campaignId = cfg && (cfg.CAMPAIGN_ID || cfg.campaign_id);
+  const base = 'https://api.partner.market.yandex.ru';
+  const urls = [
+    `${base}/campaigns/${campaignId}/offer-prices`,
+    `${base}/v2/campaigns/${campaignId}/offer-prices`
+  ];
+
   const params = [];
   if (limit) params.push(`limit=${limit}`);
   if (pageToken) params.push(`page_token=${encodeURIComponent(pageToken)}`);
-  
-  if (params.length > 0) {
-    url += '?' + params.join('&');
+  const qs = params.length ? `?${params.join('&')}` : '';
+
+  const headersList = getAuthHeaders();
+
+  let lastErr = null;
+  for (const u of urls) {
+    for (const h of headersList) {
+      try {
+        const response = UrlFetchApp.fetch(u + qs, { method: 'GET', headers: h, muteHttpExceptions: true });
+        const code = response.getResponseCode();
+        if (code >= 200 && code < 300) {
+          return JSON.parse(response.getContentText());
+        }
+        lastErr = `HTTP ${code}: ${response.getContentText()}`;
+      } catch (e) {
+        lastErr = e.message;
+      }
+    }
   }
-  
-  const options = {
-    method: 'GET',
-    headers: getAuthHeaders(),
-    muteHttpExceptions: true
-  };
-  
-  console.log(`Запрос: ${url}`);
-  
-  const response = UrlFetchApp.fetch(url, options);
-  const responseCode = response.getResponseCode();
-  const responseData = JSON.parse(response.getContentText());
-  
-  if (responseCode !== 200) {
-    console.error('Ошибка API:', responseData);
-    throw new Error(`API вернул код ${responseCode}: ${responseData.message || responseData.errors?.[0]?.message || 'Unknown error'}`);
-  }
-  
-  return responseData;
+  throw new Error(`Не удалось получить цены: ${lastErr || 'unknown error'}`);
 }
 
 /**
  * Запрос цен конкретных товаров
  */
 function fetchSpecificPrices(offerIds) {
-  const url = `https://api.partner.market.yandex.ru/campaigns/${CAMPAIGN_ID}/offer-prices`;
-  
-  const payload = {
-    offerIds: offerIds
-  };
-  
-  const options = {
-    method: 'POST',
-    headers: getAuthHeaders(),
-    payload: JSON.stringify(payload),
-    muteHttpExceptions: true
-  };
-  
-  console.log(`Запрос цен для ${offerIds.length} товаров`);
-  
-  const response = UrlFetchApp.fetch(url, options);
-  const responseCode = response.getResponseCode();
-  const responseData = JSON.parse(response.getContentText());
-  
-  if (responseCode !== 200) {
-    console.error('Ошибка API:', responseData);
-    throw new Error(`API вернул код ${responseCode}: ${responseData.message || responseData.errors?.[0]?.message || 'Unknown error'}`);
+  const cfg = getYandexConfig ? getYandexConfig() : null;
+  const campaignId = cfg && (cfg.CAMPAIGN_ID || cfg.campaign_id);
+  const base = 'https://api.partner.market.yandex.ru';
+  const urls = [
+    `${base}/campaigns/${campaignId}/offer-prices`,
+    `${base}/v2/campaigns/${campaignId}/offer-prices`
+  ];
+  const payload = { offerIds };
+  const headersList = getAuthHeaders();
+  let lastErr = null;
+  for (const u of urls) {
+    for (const h of headersList) {
+      try {
+        const response = UrlFetchApp.fetch(u, { method: 'POST', headers: h, payload: JSON.stringify(payload), muteHttpExceptions: true });
+        const code = response.getResponseCode();
+        if (code >= 200 && code < 300) {
+          return JSON.parse(response.getContentText());
+        }
+        lastErr = `HTTP ${code}: ${response.getContentText()}`;
+      } catch (e) {
+        lastErr = e.message;
+      }
+    }
   }
-  
-  return responseData;
+  throw new Error(`Не удалось получить цены (по SKU): ${lastErr || 'unknown error'}`);
 }
 
 /**
