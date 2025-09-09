@@ -169,6 +169,8 @@ function onOpen() {
       .addItem('📦 Выгрузить остатки (активный Яндекс Маркет)', 'exportYandexStocks')
       .addItem('📦 Выгрузить остатки (все Яндекс Маркет магазины)', 'exportAllYandexStoresStocks')
       .addSeparator()
+      .addItem('📈 Выгрузить цены (активный Яндекс Маркет)', 'exportYandexPrices')
+      .addSeparator()
       .addItem('🧪 Тест Яндекс Маркет API', 'testYandexConnection')
       .addItem('🚀 Быстрый тест с вашими токенами', 'testYandexWithYourTokens'))
     .addSeparator()
