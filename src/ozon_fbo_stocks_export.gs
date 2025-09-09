@@ -1335,9 +1335,15 @@ function writeWBPricesToSheetT(prices, storeName) {
     const sa = (saValues[i][0] || '').toString().trim();
     const p = bySa[sa];
     if (p) {
-      rows.push([sa, p.price || '', p.old_price || '', p.min_price || '', p.currency || 'RUB']);
+      rows.push([
+        sa,
+        (p.price !== undefined && p.price !== null && p.price !== '') ? p.price : 0,
+        (p.old_price !== undefined && p.old_price !== null && p.old_price !== '') ? p.old_price : 0,
+        (p.min_price !== undefined && p.min_price !== null && p.min_price !== '') ? p.min_price : 0,
+        p.currency || 'RUB'
+      ]);
     } else {
-      rows.push([sa, '', '', '', 'RUB']);
+      rows.push([sa, 0, 0, 0, 'RUB']);
     }
   }
 
