@@ -2025,8 +2025,7 @@ function writeToGoogleSheets(stocks) {
   // Автоподбор ширины колонок
   sheet.autoResizeColumns(1, headers.length);
   
-  // Добавляем фильтры
-  sheet.getRange(1, 1, rows.length + 1, headers.length).createFilter();
+  // Фильтры отключены по требованию
   
   console.log(`Записано ${rows.length} строк в Google Таблицы`);
 }
@@ -2519,9 +2518,7 @@ function writeWBStatisticsToGoogleSheets(data) {
       const dataRange = sheet.getRange(2, 1, rows.length, headers.length);
       dataRange.setValues(rows);
       
-      // Добавляем фильтр только если есть данные
-      const filterRange = sheet.getRange(1, 1, rows.length + 1, headers.length);
-      filterRange.createFilter();
+      // Фильтры отключены по требованию
       
       console.log(`Записано ${rows.length} строк в Google Таблицы`);
     } catch (error) {
@@ -3054,9 +3051,7 @@ function writeWBToGoogleSheets(data) {
       const dataRange = sheet.getRange(2, 1, rows.length, headers.length);
       dataRange.setValues(rows);
       
-      // Добавляем фильтр только если есть данные
-      const filterRange = sheet.getRange(1, 1, rows.length + 1, headers.length);
-      filterRange.createFilter();
+      // Фильтры отключены по требованию
       
       console.log(`Записано ${rows.length} строк в Google Таблицы`);
     } catch (error) {
