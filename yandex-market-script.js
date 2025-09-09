@@ -156,19 +156,34 @@ function exportSpecificPrices(offerIds = []) {
  */
 function getCampaigns() {
   try {
-    const url = 'https://api.partner.market.yandex.ru/campaigns';
-    const options = {
-      method: 'GET',
-      headers: getAuthHeaders(),
-      muteHttpExceptions: true
-    };
-    
-    const response = UrlFetchApp.fetch(url, options);
-    const responseCode = response.getResponseCode();
-    const responseData = JSON.parse(response.getContentText());
-    
-    if (responseCode !== 200) {
-      throw new Error(`API вернул код ${responseCode}: ${responseData.message || 'Unknown error'}`);
+    const base = 'https://api.partner.market.yandex.ru';
+    const urls = [`${base}/campaigns`, `${base}/v2/campaigns`];
+    const headersList = getAuthHeaders();
+    let responseData = null;
+    let ok = false;
+    let lastErr = '';
+
+    for (const u of urls) {
+      for (const h of headersList) {
+        try {
+          const r = UrlFetchApp.fetch(u, { method: 'GET', headers: h, muteHttpExceptions: true });
+          const code = r.getResponseCode();
+          const txt = r.getContentText();
+          if (code >= 200 && code < 300) {
+            responseData = JSON.parse(txt);
+            ok = true;
+            break;
+          } else {
+            lastErr = `HTTP ${code}: ${txt}`;
+          }
+        } catch (e) {
+          lastErr = e.message;
+        }
+      }
+      if (ok) break;
+    }
+    if (!ok) {
+      throw new Error(`Не удалось получить кампании: ${lastErr || 'unknown error'}`);
     }
     
     const sheet = getOrCreateSheet('Список кампаний');
@@ -358,24 +373,30 @@ function formatDate(dateString) {
 function testConnection() {
   try {
     console.log('Тестируем подключение к API...');
-    
-    const url = 'https://api.partner.market.yandex.ru/campaigns';
-    const options = {
-      method: 'GET',
-      headers: getAuthHeaders(),
-      muteHttpExceptions: true
-    };
-    
-    const response = UrlFetchApp.fetch(url, options);
-    const responseCode = response.getResponseCode();
-    
-    if (responseCode === 200) {
+    const base = 'https://api.partner.market.yandex.ru';
+    const urls = [`${base}/campaigns`, `${base}/v2/campaigns`];
+    const headersList = getAuthHeaders();
+    let ok = false;
+    let lastErr = '';
+    for (const u of urls) {
+      for (const h of headersList) {
+        try {
+          const r = UrlFetchApp.fetch(u, { method: 'GET', headers: h, muteHttpExceptions: true });
+          const code = r.getResponseCode();
+          if (code >= 200 && code < 300) { ok = true; break; }
+          lastErr = `HTTP ${code}: ${r.getContentText()}`;
+        } catch (e) {
+          lastErr = e.message;
+        }
+      }
+      if (ok) break;
+    }
+    if (ok) {
       console.log('✅ Подключение к API успешно!');
       SpreadsheetApp.getUi().alert('✅ Подключение к API Яндекс Маркета успешно!\n\nМожно приступать к выгрузке данных.');
     } else {
-      const errorData = JSON.parse(response.getContentText());
-      console.error('❌ Ошибка подключения:', errorData);
-      SpreadsheetApp.getUi().alert(`❌ Ошибка подключения к API:\n\nКод: ${responseCode}\nСообщение: ${errorData.message || 'Unknown error'}\n\nПроверьте токен и настройки.`);
+      console.error('❌ Ошибка подключения:', lastErr);
+      SpreadsheetApp.getUi().alert(`❌ Ошибка подключения к API:\n\n${lastErr || 'Unknown error'}\n\nПроверьте токен и campaign_id активного магазина.`);
     }
     
   } catch (error) {
