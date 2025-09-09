@@ -1207,10 +1207,22 @@ function callOzonAPI(path, body, headers) {
  */
 function exportWBPrices() {
   const config = getWBConfig();
+  // Сначала пробуем публичный API по nmId из колонки P2:P активного листа WB магазина
+  const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  const sheetName = sanitizeSheetName(config.STORE_NAME || 'WB Магазин');
+  const sheet = spreadsheet.getSheetByName(sheetName) || spreadsheet.insertSheet(sheetName);
+
+  const nmIds = readColumnValues_(sheet, 2, 16); // P2:P
+  if (nmIds.length > 0) {
+    const publicPrices = fetchWBPublicPricesByNmIds(nmIds);
+    writeWBPublicPricesToSheetT(publicPrices, config.STORE_NAME, nmIds);
+    return;
+  }
+
+  // Если P2:P пусто — используем закрытый Supplier API по API_KEY и сопоставлению 'Артикул поставщика'
   if (!config.API_KEY) {
     throw new Error('Для WB не задан API_KEY. Добавьте WB магазин или задайте ключ.');
   }
-
   const prices = fetchWBPrices(config.API_KEY);
   writeWBPricesToSheetT(prices, config.STORE_NAME);
 }
@@ -1330,6 +1342,119 @@ function writeWBPricesToSheetT(prices, storeName) {
   sheet.getRange(2, startCol, rows.length, headers.length).setValues(rows);
   sheet.autoResizeColumns(startCol, headers.length);
   sheet.getRange(rows.length + 3, startCol).setValue('Цены WB обновлены: ' + new Date().toLocaleString('ru-RU'));
+}
+
+/**
+ * Читает значения из колонки начиная с rowStart. Возвращает массив строк (без пустых).
+ */
+function readColumnValues_(sheet, rowStart, colIndex) {
+  const last = sheet.getLastRow();
+  if (last < rowStart) return [];
+  const rng = sheet.getRange(rowStart, colIndex, last - rowStart + 1, 1).getValues();
+  const out = [];
+  for (const [cell] of rng) {
+    if (cell === '' || cell === null || cell === undefined) continue;
+    const s = String(cell).trim();
+    if (s) out.push(s);
+  }
+  return out;
+}
+
+/**
+ * Публичный WB: получает цены по массиву nmId через cards/v2/detail, батчами по 100.
+ */
+function fetchWBPublicPricesByNmIds(nmIds) {
+  const BASE = 'https://card.wb.ru/cards/v2/detail?appType=1&curr=rub&dest=-1255987&spp=30&ab_testing=false&nm=';
+  const CHUNK = 100;
+  const map = new Map(); // nmId -> { nmId, price, old_price, discount_percent, currency }
+
+  for (let i = 0; i < nmIds.length; i += CHUNK) {
+    const chunk = nmIds.slice(i, i + CHUNK);
+    const url = BASE + encodeURIComponent(chunk.join(';'));
+    const resp = safeFetchJson_(url);
+    const products = resp && resp.data && Array.isArray(resp.data.products) ? resp.data.products : [];
+    for (const p of products) {
+      const nmId = String(p.id);
+      let priceBasic = null;
+      let priceTotal = null;
+      if (Array.isArray(p.sizes) && p.sizes.length) {
+        const s = p.sizes[0];
+        priceBasic = toMoney_(s && s.price && s.price.basic);
+        priceTotal = toMoney_(s && s.price && s.price.total);
+      }
+      // Fallback на верхнеуровневые поля
+      if (priceBasic == null) priceBasic = toMoney_(p.priceU);
+      if (priceTotal == null) priceTotal = toMoney_(p.salePriceU);
+      let discount = '';
+      if (isFiniteNumber_(priceBasic) && isFiniteNumber_(priceTotal) && priceBasic > 0) {
+        discount = Math.round((1 - priceTotal / priceBasic) * 100);
+      }
+      map.set(nmId, {
+        nmId: nmId,
+        price: priceTotal != null ? priceTotal : '',
+        old_price: priceBasic != null ? priceBasic : '',
+        discount_percent: discount,
+        currency: 'RUB'
+      });
+    }
+    Utilities.sleep(150);
+  }
+
+  return map;
+}
+
+function writeWBPublicPricesToSheetT(priceMap, storeName, nmIdsOrder) {
+  const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  const sheetName = sanitizeSheetName(storeName || 'WB Магазин');
+  let sheet = spreadsheet.getSheetByName(sheetName) || spreadsheet.insertSheet(sheetName);
+
+  const headerRow = 1;
+  const startCol = 20; // T
+  const headers = ['nmId', 'Цена, ₽', 'Старая цена, ₽', 'Скидка, %', 'Валюта'];
+  sheet.getRange(headerRow, startCol, 1, headers.length).setValues([headers]);
+  sheet.getRange(headerRow, startCol, 1, headers.length).setFontWeight('bold').setBackground('#FFF3CD');
+
+  if (!priceMap || priceMap.size === 0) return;
+
+  const rows = [];
+  // пишем в порядке nmIds из колонки P
+  for (const nmIdRaw of nmIdsOrder) {
+    const nmId = String(nmIdRaw);
+    const p = priceMap.get(nmId);
+    if (p) {
+      rows.push([nmId, p.price, p.old_price, p.discount_percent, p.currency]);
+    } else {
+      rows.push([nmId, '', '', '', 'RUB']);
+    }
+  }
+
+  sheet.getRange(2, startCol, rows.length, headers.length).setValues(rows);
+  sheet.autoResizeColumns(startCol, headers.length);
+  sheet.getRange(rows.length + 3, startCol).setValue('Цены WB (public) обновлены: ' + new Date().toLocaleString('ru-RU'));
+}
+
+// Вспомогательные для публичного WB
+function safeFetchJson_(url) {
+  try {
+    const res = UrlFetchApp.fetch(url, { method: 'get', muteHttpExceptions: true, headers: { 'Accept': 'application/json' } });
+    if (res.getResponseCode() >= 200 && res.getResponseCode() < 300) {
+      return JSON.parse(res.getContentText());
+    }
+    return null;
+  } catch (e) {
+    return null;
+  }
+}
+
+function toMoney_(v) {
+  if (v === null || v === undefined || v === '') return null;
+  const n = Number(v);
+  if (!Number.isFinite(n)) return null;
+  return Math.round(n) / 100;
+}
+
+function isFiniteNumber_(v) {
+  return typeof v === 'number' && Number.isFinite(v);
 }
 
 /**
