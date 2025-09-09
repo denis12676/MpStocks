@@ -1199,6 +1199,148 @@ function callOzonAPI(path, body, headers) {
 }
 
 /**
+ * Получает цены товаров Ozon с пагинацией v4
+ */
+function fetchAllOzonPricesV4() {
+  const config = getOzonConfig();
+  const headers = {
+    'Client-Id': config.CLIENT_ID,
+    'Api-Key': config.API_KEY
+  };
+
+  let lastId = '';
+  const result = [];
+  const PAGE_LIMIT = 1000;
+
+  do {
+    const payload = {
+      filter: {
+        visibility: 'ALL'
+      },
+      limit: PAGE_LIMIT,
+      last_id: lastId
+    };
+
+    // Согласно v4: /v4/product/info/prices
+    const resp = callOzonAPI('/v4/product/info/prices', payload, headers);
+
+    let items = [];
+    if (resp && resp.result && Array.isArray(resp.result.items)) {
+      items = resp.result.items;
+      lastId = resp.result.last_id || '';
+    } else if (Array.isArray(resp.items)) {
+      items = resp.items;
+      lastId = resp.last_id || '';
+    } else {
+      items = [];
+      lastId = '';
+    }
+
+    for (const it of items) {
+      result.push({
+        offer_id: it.offer_id || '',
+        sku: it.sku || '',
+        product_id: it.product_id || it.id || '',
+        // В ответе встречаются price и old_price, min_price
+        price: it.price && it.price.price ? Number(it.price.price) : (typeof it.price === 'number' ? it.price : null),
+        old_price: it.price && it.price.old_price ? Number(it.price.old_price) : null,
+        min_price: it.price && it.price.min_price ? Number(it.price.min_price) : null,
+        currency_code: it.price && it.price.currency_code ? it.price.currency_code : ''
+      });
+    }
+  } while (lastId);
+
+  return result;
+}
+
+/**
+ * Выгружает цены и записывает в лист магазина с колонки T
+ */
+function exportOzonPrices() {
+  const config = getOzonConfig();
+  if (!config.CLIENT_ID || !config.API_KEY) {
+    throw new Error('Не настроены API ключи Ozon. Добавьте магазин.');
+  }
+
+  const prices = fetchAllOzonPricesV4();
+  writePricesToSheetT(prices);
+}
+
+/**
+ * Записывает цены в лист магазина, начиная со столбца T (20-я колонка)
+ */
+function writePricesToSheetT(prices) {
+  const config = getOzonConfig();
+  let spreadsheetId = config.SPREADSHEET_ID || SpreadsheetApp.getActiveSpreadsheet().getId();
+  let spreadsheet;
+  try {
+    spreadsheet = SpreadsheetApp.openById(spreadsheetId);
+  } catch (e) {
+    spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  }
+
+  const sheetName = sanitizeSheetName(config.STORE_NAME || 'Неизвестный магазин');
+  let sheet = spreadsheet.getSheetByName(sheetName) || spreadsheet.insertSheet(sheetName);
+
+  // Обновляем заголовки T:Z (или дальше), не трогаем A:S
+  const headerRow = 1;
+  const startCol = 20; // T
+  const headers = ['Цена, ₽', 'Старая цена, ₽', 'Мин. цена, ₽', 'Валюта', 'Сопоставление по offer_id'];
+  sheet.getRange(headerRow, startCol, 1, headers.length).setValues([headers]);
+  sheet.getRange(headerRow, startCol, 1, headers.length).setFontWeight('bold').setBackground('#FFF3CD');
+
+  if (!prices || prices.length === 0) {
+    return;
+  }
+
+  // Создаём map по offer_id -> {price...}
+  const byOffer = {};
+  prices.forEach(p => {
+    if (p.offer_id) byOffer[p.offer_id] = p;
+  });
+
+  // Найти колонки с offer_id на листе: по текущей структуре это колонка E (5)
+  // Если структура изменится, можно искать заголовок 'Артикул' в первой строке
+  let offerCol = 5;
+  try {
+    const firstRow = sheet.getRange(1, 1, 1, sheet.getMaxColumns()).getValues()[0];
+    const idx = firstRow.findIndex(v => String(v).toLowerCase() === 'артикул');
+    if (idx >= 0) offerCol = idx + 1;
+  } catch (e) {
+    // оставляем дефолт 5
+  }
+
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) {
+    return;
+  }
+
+  // Читаем offer_id по строкам
+  const offerValues = sheet.getRange(2, offerCol, lastRow - 1, 1).getValues();
+
+  const rowsToWrite = [];
+  for (let i = 0; i < offerValues.length; i++) {
+    const offerId = (offerValues[i][0] || '').toString();
+    const p = byOffer[offerId];
+    if (p) {
+      rowsToWrite.push([
+        p.price != null ? p.price : '',
+        p.old_price != null ? p.old_price : '',
+        p.min_price != null ? p.min_price : '',
+        p.currency_code || '',
+        offerId
+      ]);
+    } else {
+      rowsToWrite.push(['', '', '', '', offerId]);
+    }
+  }
+
+  sheet.getRange(2, startCol, rowsToWrite.length, headers.length).setValues(rowsToWrite);
+  sheet.autoResizeColumns(startCol, headers.length);
+  sheet.getRange(rowsToWrite.length + 3, startCol).setValue('Цены обновлены: ' + new Date().toLocaleString('ru-RU'));
+}
+
+/**
  * Получает остатки товаров через v3 API (резервный метод)
  */
 function getFBOStocksV3(warehouseIds = []) {
