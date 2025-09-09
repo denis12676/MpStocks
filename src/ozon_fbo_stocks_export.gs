@@ -1254,6 +1254,103 @@ function fetchAllOzonPricesV4() {
 }
 
 /**
+ * Считывает offer_id из листа активного магазина (ищет колонку 'Артикул')
+ */
+function getOfferIdsFromActiveStoreSheet() {
+  const config = getOzonConfig();
+  let spreadsheetId = config.SPREADSHEET_ID || SpreadsheetApp.getActiveSpreadsheet().getId();
+  let spreadsheet;
+  try {
+    spreadsheet = SpreadsheetApp.openById(spreadsheetId);
+  } catch (e) {
+    spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  }
+
+  const sheetName = sanitizeSheetName(config.STORE_NAME || 'Неизвестный магазин');
+  const sheet = spreadsheet.getSheetByName(sheetName);
+  if (!sheet) return [];
+
+  const header = sheet.getRange(1, 1, 1, sheet.getMaxColumns()).getValues()[0];
+  let offerCol = header.findIndex(v => String(v).toLowerCase() === 'артикул');
+  if (offerCol === -1) offerCol = 4; // по умолчанию E -> индекс 4 (0-based)
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return [];
+
+  const values = sheet.getRange(2, offerCol + 1, lastRow - 1, 1).getValues();
+  const ids = [];
+  for (const v of values) {
+    const id = (v[0] || '').toString().trim();
+    if (id) ids.push(id);
+  }
+  // убираем дубли
+  return Array.from(new Set(ids));
+}
+
+/**
+ * Получает цены по списку offer_id, поддерживая разные варианты эндпоинтов и тел
+ */
+function fetchOzonPricesByOfferIds(offerIds) {
+  const config = getOzonConfig();
+  const headers = {
+    'Client-Id': config.CLIENT_ID,
+    'Api-Key': config.API_KEY
+  };
+
+  const chunkSize = 1000; // максимально щадящий батч
+  const result = [];
+
+  for (let i = 0; i < offerIds.length; i += chunkSize) {
+    const chunk = offerIds.slice(i, i + chunkSize);
+
+    // Пытаемся несколько форматов и путей
+    const tryCalls = [
+      { path: '/v3/product/info/prices', body: { offer_id: chunk } },
+      { path: '/v2/product/info/prices', body: { offer_id: chunk } },
+      { path: '/v4/product/info/prices', body: { filter: { offer_id: chunk } } }
+    ];
+
+    let got = null;
+    for (const tc of tryCalls) {
+      try {
+        const resp = callOzonAPI(tc.path, tc.body, headers);
+        got = resp;
+        break;
+      } catch (e) {
+        // пробуем следующий
+      }
+    }
+
+    if (!got) continue;
+
+    let items = [];
+    if (got.result && Array.isArray(got.result)) items = got.result;
+    if (got.result && Array.isArray(got.result.items)) items = got.result.items;
+    if (Array.isArray(got.items)) items = got.items;
+
+    for (const it of items) {
+      // поддержка разных структур
+      const priceObj = it.price || it.prices || it.price_info || {};
+      const price = typeof it.price === 'number' ? it.price : (priceObj.price || priceObj.value || null);
+      const old_price = priceObj.old_price || null;
+      const min_price = priceObj.min_price || null;
+      const currency_code = priceObj.currency_code || priceObj.currency || '';
+
+      result.push({
+        offer_id: it.offer_id || it.offerId || '',
+        sku: it.sku || '',
+        product_id: it.product_id || it.id || '',
+        price: price != null ? Number(price) : null,
+        old_price: old_price != null ? Number(old_price) : null,
+        min_price: min_price != null ? Number(min_price) : null,
+        currency_code
+      });
+    }
+  }
+
+  return result;
+}
+
+/**
  * Выгружает цены и записывает в лист магазина с колонки T
  */
 function exportOzonPrices() {
