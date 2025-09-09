@@ -1430,9 +1430,15 @@ function writeWBPublicPricesToSheetT(priceMap, storeName, nmIdsOrder) {
     const nmId = String(nmIdRaw);
     const p = priceMap.get(nmId);
     if (p) {
-      rows.push([nmId, p.price, p.old_price, p.discount_percent, p.currency]);
+      rows.push([
+        nmId,
+        (p.price !== undefined && p.price !== null && p.price !== '') ? p.price : 0,
+        (p.old_price !== undefined && p.old_price !== null && p.old_price !== '') ? p.old_price : 0,
+        p.discount_percent || 0,
+        p.currency || 'RUB'
+      ]);
     } else {
-      rows.push([nmId, '', '', '', 'RUB']);
+      rows.push([nmId, 0, 0, 0, 'RUB']);
     }
   }
 
