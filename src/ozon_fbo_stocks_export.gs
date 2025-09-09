@@ -1399,8 +1399,8 @@ function fetchWBPublicPricesByNmIds(nmIds) {
       }
       map.set(nmId, {
         nmId: nmId,
-        price: priceTotal != null ? priceTotal : '',
-        old_price: priceBasic != null ? priceBasic : '',
+        price: (priceTotal != null && priceTotal !== '') ? priceTotal : 0,
+        old_price: (priceBasic != null && priceBasic !== '') ? priceBasic : 0,
         discount_percent: discount,
         currency: 'RUB'
       });
