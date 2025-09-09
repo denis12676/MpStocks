@@ -231,14 +231,9 @@ function getCampaigns() {
 function getAuthHeaders() {
   const cfg = getYandexConfig ? getYandexConfig() : null;
   const token = cfg && (cfg.API_TOKEN || cfg.API_KEY || cfg.apiKey);
-  // Пытаемся все популярные варианты: вернём массив заголовков, а не один
-  const candidates = [];
-  if (token) {
-    candidates.push({ 'Authorization': `Api-Key ${token}`, 'Content-Type': 'application/json' });
-    candidates.push({ 'Authorization': `OAuth oauth_token="${token}"`, 'Content-Type': 'application/json' });
-    candidates.push({ 'Authorization': `OAuth ${token}`, 'Content-Type': 'application/json' });
-  }
-  return candidates.length ? candidates : [{ 'Content-Type': 'application/json' }];
+  if (!token) return [{ 'Content-Type': 'application/json' }];
+  // Как в выгрузке остатков: используем Api-Key заголовок
+  return [{ 'Api-Key': token, 'Content-Type': 'application/json' }];
 }
 
 /**
