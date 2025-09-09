@@ -156,6 +156,8 @@ function onOpen() {
       .addItem('📦 Выгрузить FBO остатки (все WB магазины)', 'exportAllWBStoresStocks')
       .addItem('📦 Выгрузить FBO остатки (все WB магазины, Statistics API)', 'exportAllWBStoresStocksStatisticsAPI')
       .addSeparator()
+      .addItem('📈 Выгрузить цены (активный WB)', 'exportWBPrices')
+      .addSeparator()
       .addItem('📊 Выгрузить через Statistics API (продажи)', 'exportWBStocksViaStatisticsAPI')
       .addItem('🧪 Тест WB API', 'testWBConnection')
       .addItem('🧪 Тест WB API (taskId)', 'testWBTaskIdAPI')
