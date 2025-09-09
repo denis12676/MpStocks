@@ -127,6 +127,7 @@ function onOpen() {
     .addItem('📊 Выгрузить только FBO остатки', 'exportOnlyFBOStocks')
     .addItem('📊 Выгрузить остатки (все магазины)', 'exportAllStoresStocks')
     .addItem('📈 Выгрузить цены (активный магазин)', 'exportOzonPrices')
+    .addItem('📊 Выгрузить детальные цены (все товары)', 'exportOzonPricesDetailed')
     .addItem('🚀 Тест v4 API с пагинацией', 'testV4Pagination')
     .addSeparator()
     .addSubMenu(ui.createMenu('🏪 Управление магазинами')
@@ -1681,6 +1682,183 @@ function exportOzonPricesDetailed() {
   
   console.log(`Выгружено ${allPrices.length} товаров с ценами`);
   SpreadsheetApp.getUi().alert('Выгрузка завершена', `Загружено ${allPrices.length} товаров`, SpreadsheetApp.getUi().ButtonSet.OK);
+}
+
+/**
+ * Получает все цены через v5 API с пагинацией
+ */
+function fetchAllOzonPricesV5(clientId, apiKey) {
+  const url = 'https://api-seller.ozon.ru/v5/product/info/prices';
+  const headers = {
+    'Client-Id': clientId,
+    'Api-Key': apiKey
+  };
+  
+  let cursor = '';
+  const allItems = [];
+  let page = 0;
+  
+  do {
+    const body = {
+      cursor: cursor,
+      filter: {
+        visibility: 'ALL'
+      },
+      limit: 1000
+    };
+    
+    const options = {
+      method: 'post',
+      contentType: 'application/json',
+      payload: JSON.stringify(body),
+      headers: headers,
+      muteHttpExceptions: true
+    };
+    
+    const response = UrlFetchApp.fetch(url, options);
+    const code = response.getResponseCode();
+    
+    if (code >= 200 && code < 300) {
+      const data = JSON.parse(response.getContentText());
+      if (data.items && data.items.length > 0) {
+        allItems.push(...data.items);
+      }
+      cursor = data.cursor || '';
+    } else {
+      throw new Error(`Ошибка API: HTTP ${code}: ${response.getContentText()}`);
+    }
+    
+    page++;
+    Utilities.sleep(150);
+    if (page > 1000) throw new Error('Слишком много страниц, остановлено');
+  } while (cursor);
+  
+  return allItems;
+}
+
+/**
+ * Записывает детальные цены Ozon в формате как в ozon_price_example
+ */
+function writeOzonPricesDetailed(sheet, items) {
+  const header = [
+    'Артикул продавца',
+    'ID товара', 
+    'Валюта',
+    'Цена',
+    'Старая цена',
+    'Маркетинговая цена',
+    'Маркетинговая цена продавца',
+    'Мин. цена',
+    'Нетто цена',
+    'Розничная цена',
+    'НДС',
+    'Эквайринг',
+    '% продаж FBO',
+    '% продаж FBS',
+    'FBO доставка покупателю',
+    'FBO прямой поток мин',
+    'FBO прямой поток макс', 
+    'FBO возврат',
+    'FBS доставка покупателю',
+    'FBS прямой поток мин',
+    'FBS прямой поток макс',
+    'FBS первая миля мин',
+    'FBS первая миля макс',
+    'FBS возврат',
+    'Индекс цены (цвет)',
+    'Ozon индекс мин. цена',
+    'Ozon индекс валюта',
+    'Ozon индекс значение',
+    'Внешний индекс мин. цена',
+    'Внешний индекс валюта', 
+    'Внешний индекс значение',
+    'Собственные МП мин. цена',
+    'Собственные МП валюта',
+    'Собственные МП значение',
+    'Объёмный вес'
+  ];
+
+  // Сортируем по цене по убыванию
+  const sorted = items.slice().sort((a, b) => {
+    const ap = Number(((a.price || {}).price) || 0);
+    const bp = Number(((b.price || {}).price) || 0);
+    return bp - ap;
+  });
+
+  const rows = sorted.map((item) => {
+    const p = item.price || {};
+    const c = item.commissions || {};
+    const idx = item.price_indexes || {};
+    const oz = (idx.ozon_index_data || {});
+    const ex = (idx.external_index_data || {});
+    const sm = (idx.self_marketplaces_index_data || {});
+    
+    return [
+      safeString(item.offer_id),
+      safeString(item.product_id),
+      safeString(p.currency_code),
+      safeNumber(p.price),
+      safeNumber(p.old_price),
+      safeNumber(p.marketing_price),
+      safeNumber(p.marketing_seller_price),
+      safeNumber(p.min_price),
+      safeNumber(p.net_price),
+      safeNumber(p.retail_price),
+      safeNumber(p.vat),
+      safeNumber(item.acquiring),
+      safeNumber(c.sales_percent_fbo),
+      safeNumber(c.sales_percent_fbs),
+      safeNumber(c.fbo_deliv_to_customer_amount),
+      safeNumber(c.fbo_direct_flow_trans_min_amount),
+      safeNumber(c.fbo_direct_flow_trans_max_amount),
+      safeNumber(c.fbo_return_flow_amount),
+      safeNumber(c.fbs_deliv_to_customer_amount),
+      safeNumber(c.fbs_direct_flow_trans_min_amount),
+      safeNumber(c.fbs_direct_flow_trans_max_amount),
+      safeNumber(c.fbs_first_mile_min_amount),
+      safeNumber(c.fbs_first_mile_max_amount),
+      safeNumber(c.fbs_return_flow_amount),
+      safeString(idx.color_index),
+      safeNumber(oz.min_price),
+      safeString(oz.min_price_currency),
+      safeNumber(oz.price_index_value),
+      safeNumber(ex.min_price),
+      safeString(ex.min_price_currency),
+      safeNumber(ex.price_index_value),
+      safeNumber(sm.min_price),
+      safeString(sm.min_price_currency),
+      safeNumber(sm.price_index_value),
+      safeNumber(item.volume_weight)
+    ];
+  });
+
+  // Очищаем лист и записываем данные
+  sheet.clearContents();
+  sheet.getRange(1, 1, 1, header.length).setValues([header]);
+  
+  // Форматируем заголовки
+  sheet.getRange(1, 1, 1, header.length)
+    .setFontWeight('bold')
+    .setBackground('#E8F0FE');
+  
+  if (rows.length > 0) {
+    sheet.getRange(2, 1, rows.length, header.length).setValues(rows);
+  }
+  
+  // Автоподбор ширины колонок
+  sheet.autoResizeColumns(1, header.length);
+}
+
+// Вспомогательные функции для безопасного преобразования
+function safeString(v) {
+  if (v === null || v === undefined) return '';
+  return String(v);
+}
+
+function safeNumber(v) {
+  if (v === null || v === undefined || v === '') return '';
+  const n = Number(v);
+  return isNaN(n) ? '' : n;
 }
 
 /**
