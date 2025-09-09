@@ -4230,9 +4230,7 @@ function writeYandexToGoogleSheets(data, storeName) {
       headerRange.setFontWeight('bold');
       headerRange.setBackground('#E8F0FE');
       
-      // Добавляем фильтр только если есть данные
-      const filterRange = sheet.getRange(1, 5, rows.length, rows[0].length);
-      filterRange.createFilter();
+      // Фильтры убраны по запросу пользователя
       
       console.log(`Записано ${rows.length} строк в Google Таблицы (включая заголовки)`);
     } catch (error) {
