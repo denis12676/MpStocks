@@ -1661,6 +1661,29 @@ function exportOzonPrices() {
 }
 
 /**
+ * Выгружает детальные цены Ozon в формате как в ozon_price_example
+ */
+function exportOzonPricesDetailed() {
+  const config = getOzonConfig();
+  if (!config.CLIENT_ID || !config.API_KEY) {
+    throw new Error('Не настроены API ключи Ozon. Добавьте магазин.');
+  }
+
+  const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  const sheetName = sanitizeSheetName(config.STORE_NAME || 'Ozon Prices');
+  const sheet = spreadsheet.getSheetByName(sheetName) || spreadsheet.insertSheet(sheetName);
+
+  // Получаем все цены через v5 API
+  const allPrices = fetchAllOzonPricesV5(config.CLIENT_ID, config.API_KEY);
+  
+  // Записываем в детальном формате
+  writeOzonPricesDetailed(sheet, allPrices);
+  
+  console.log(`Выгружено ${allPrices.length} товаров с ценами`);
+  SpreadsheetApp.getUi().alert('Выгрузка завершена', `Загружено ${allPrices.length} товаров`, SpreadsheetApp.getUi().ButtonSet.OK);
+}
+
+/**
  * Записывает цены в лист магазина, начиная со столбца T (20-я колонка)
  */
 function writePricesToSheetT(prices) {
