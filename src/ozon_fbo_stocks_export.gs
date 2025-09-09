@@ -4245,6 +4245,103 @@ function writeYandexToGoogleSheets(data, storeName) {
 }
 
 /**
+ * Выгружает цены для активного Яндекс Маркет магазина и пишет в T:X
+ */
+function exportYandexPrices() {
+  const config = getYandexConfig();
+  const token = config.API_TOKEN;
+  const campaignId = config.CAMPAIGN_ID;
+  if (!token || !campaignId) {
+    throw new Error('Не заданы токен и campaign_id Яндекс Маркета. Добавьте магазин.');
+  }
+
+  // Читаем SKU из листа магазина (ищем колонку 'SKU товара', fallback — колонка B)
+  const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  const sheetName = sanitizeSheetName(config.STORE_NAME || 'Яндекс Маркет');
+  const sheet = spreadsheet.getSheetByName(sheetName) || spreadsheet.insertSheet(sheetName);
+  const header = sheet.getRange(1, 1, 1, sheet.getMaxColumns()).getValues()[0];
+  let skuCol = header.findIndex(v => String(v).toLowerCase() === 'sku товара');
+  if (skuCol === -1) skuCol = 2 - 1; // B как запасной вариант
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) {
+    throw new Error('Лист магазина пуст. Сначала выгрузите остатки Яндекс Маркета.');
+  }
+  const skus = sheet.getRange(2, skuCol + 1, lastRow - 1, 1).getValues()
+    .map(r => String(r[0] || '').trim())
+    .filter(Boolean);
+  if (skus.length === 0) {
+    throw new Error('Не найдено ни одного SKU для Яндекс Маркета.');
+  }
+
+  // Получаем цены пачками через Маркет API методом business-prices (assuming Open API: GET/POST v2/campaigns/{id}/offer-prices)
+  const pricesMap = fetchYandexPricesBySkus(token, campaignId, skus);
+  writeYandexPricesToSheetT(sheet, pricesMap);
+}
+
+function fetchYandexPricesBySkus(token, campaignId, skus) {
+  const base = 'https://api.partner.market.yandex.ru';
+  const headers = {
+    'Authorization': 'OAuth ' + token,
+    'Content-Type': 'application/json'
+  };
+
+  const map = new Map(); // sku -> {price, old_price, currency}
+  const chunk = 200; // безопасный размер
+  for (let i = 0; i < skus.length; i += chunk) {
+    const part = skus.slice(i, i + chunk);
+    // В некоторых версиях API: POST /v2/campaigns/{id}/offer-prices
+    const url = `${base}/v2/campaigns/${encodeURIComponent(campaignId)}/offer-prices`; 
+    const body = { offers: part.map(sku => ({ sku })) };
+    try {
+      const resp = UrlFetchApp.fetch(url, { method: 'post', headers, muteHttpExceptions: true, payload: JSON.stringify(body) });
+      const code = resp.getResponseCode();
+      if (code >= 200 && code < 300) {
+        const data = JSON.parse(resp.getContentText());
+        const items = (data && data.result && data.result.offers) || data.offers || [];
+        for (const it of items) {
+          const s = String(it.sku || it.offerId || it.shopSku || '');
+          const p = it.price || it.basicPrice || it.currentPrice || {};
+          const price = Number(p.value || p.price || it.priceValue || 0);
+          const currency = p.currency || it.currency || 'RUB';
+          const oldPrice = Number(it.oldPrice || p.oldValue || 0) || '';
+          if (s) map.set(s, { price: price || '', old_price: oldPrice, currency });
+        }
+      }
+    } catch (e) {
+      // игнорируем и идём дальше
+    }
+    Utilities.sleep(120);
+  }
+  return map;
+}
+
+function writeYandexPricesToSheetT(sheet, pricesMap) {
+  const startCol = 20; // T
+  const headers = ['SKU', 'Цена, ₽', 'Старая цена, ₽', 'Валюта'];
+  sheet.getRange(1, startCol, 1, headers.length).setValues([headers]);
+  sheet.getRange(1, startCol, 1, headers.length).setFontWeight('bold').setBackground('#FFF3CD');
+
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return;
+
+  // Ищем колонку SKU товара
+  const header = sheet.getRange(1, 1, 1, sheet.getMaxColumns()).getValues()[0];
+  let skuCol = header.findIndex(v => String(v).toLowerCase() === 'sku товара');
+  if (skuCol === -1) skuCol = 2 - 1; // B
+
+  const skus = sheet.getRange(2, skuCol + 1, lastRow - 1, 1).getValues().map(r => String(r[0] || '').trim());
+  const rows = [];
+  for (const sku of skus) {
+    const p = pricesMap.get(sku);
+    if (p) rows.push([sku, p.price || '', p.old_price || '', p.currency || 'RUB']);
+    else rows.push([sku, '', '', 'RUB']);
+  }
+  sheet.getRange(2, startCol, rows.length, headers.length).setValues(rows);
+  sheet.autoResizeColumns(startCol, headers.length);
+  sheet.getRange(rows.length + 3, startCol).setValue('Цены Яндекс Маркета обновлены: ' + new Date().toLocaleString('ru-RU'));
+}
+
+/**
  * Тестирует подключение к Яндекс Маркет API
  */
 function testYandexConnection() {
