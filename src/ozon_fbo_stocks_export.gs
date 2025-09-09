@@ -1302,33 +1302,51 @@ function fetchOzonPricesByOfferIds(offerIds) {
   for (let i = 0; i < offerIds.length; i += chunkSize) {
     const chunk = offerIds.slice(i, i + chunkSize);
 
-    // Пытаемся несколько форматов и путей
-    const tryCalls = [
-      { path: '/v3/product/info/prices', body: { offer_id: chunk } },
-      { path: '/v2/product/info/prices', body: { offer_id: chunk } },
-      { path: '/v4/product/info/prices', body: { filter: { offer_id: chunk } } }
-    ];
-
-    let got = null;
-    for (const tc of tryCalls) {
-      try {
-        const resp = callOzonAPI(tc.path, tc.body, headers);
-        got = resp;
-        break;
-      } catch (e) {
-        // пробуем следующий
-      }
+    // Сначала пробуем v5 с курсором
+    let v5Items = [];
+    try {
+      let cursor = '';
+      do {
+        const body = {
+          filter: { offer_id: chunk, visibility: 'ALL' },
+          limit: 1000,
+          cursor: cursor
+        };
+        const resp = callOzonAPI('/v5/product/info/prices', body, headers);
+        const items = (resp && resp.items) || [];
+        if (Array.isArray(items) && items.length) v5Items.push(...items);
+        cursor = (resp && resp.cursor) || '';
+        Utilities.sleep(100);
+      } while (cursor);
+    } catch (e) {
+      v5Items = [];
     }
 
-    if (!got) continue;
-
-    let items = [];
-    if (got.result && Array.isArray(got.result)) items = got.result;
-    if (got.result && Array.isArray(got.result.items)) items = got.result.items;
-    if (Array.isArray(got.items)) items = got.items;
+    let items = v5Items;
+    if (!items || items.length === 0) {
+      // Фоллбеки: v3, v2, v4 (на случай особенностей аккаунта/версии)
+      const tryCalls = [
+        { path: '/v3/product/info/prices', body: { offer_id: chunk } },
+        { path: '/v2/product/info/prices', body: { offer_id: chunk } },
+        { path: '/v4/product/info/prices', body: { filter: { offer_id: chunk } } }
+      ];
+      let got = null;
+      for (const tc of tryCalls) {
+        try {
+          const resp = callOzonAPI(tc.path, tc.body, headers);
+          got = resp;
+          break;
+        } catch (e) {
+          // пробуем следующий
+        }
+      }
+      if (!got) continue;
+      if (got.result && Array.isArray(got.result)) items = got.result;
+      if (got.result && Array.isArray(got.result.items)) items = got.result.items;
+      if (Array.isArray(got.items)) items = got.items;
+    }
 
     for (const it of items) {
-      // поддержка разных структур
       const priceObj = it.price || it.prices || it.price_info || {};
       const price = typeof it.price === 'number' ? it.price : (priceObj.price || priceObj.value || null);
       const old_price = priceObj.old_price || null;
