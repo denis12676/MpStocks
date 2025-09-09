@@ -4304,10 +4304,12 @@ function fetchYandexPricesBySkus(token, campaignId, skus) {
  */
 function fetchAllYandexPrices(token, campaignId) {
   const base = 'https://api.partner.market.yandex.ru';
-  const headers = {
-    'Authorization': 'OAuth ' + token,
-    'Content-Type': 'application/json'
-  };
+  // Пробуем разные варианты заголовков авторизации
+  const headersCandidates = [
+    { 'Authorization': 'Api-Key ' + token, 'Content-Type': 'application/json' },
+    { 'Authorization': 'OAuth oauth_token="' + token + '"', 'Content-Type': 'application/json' },
+    { 'Authorization': 'OAuth ' + token, 'Content-Type': 'application/json' }
+  ];
   const urls = [
     (pageToken, limit) => `${base}/campaigns/${encodeURIComponent(campaignId)}/offer-prices?limit=${limit}${pageToken ? `&page_token=${encodeURIComponent(pageToken)}` : ''}`,
     (pageToken, limit) => `${base}/v2/campaigns/${encodeURIComponent(campaignId)}/offer-prices?limit=${limit}${pageToken ? `&page_token=${encodeURIComponent(pageToken)}` : ''}`
@@ -4320,15 +4322,20 @@ function fetchAllYandexPrices(token, campaignId) {
   do {
     let resp = null;
     for (const makeUrl of urls) {
-      try {
-        const url = makeUrl(pageToken, limit);
-        const r = UrlFetchApp.fetch(url, { method: 'get', headers, muteHttpExceptions: true });
-        const code = r.getResponseCode();
-        if (code >= 200 && code < 300) {
-          resp = JSON.parse(r.getContentText());
-          break;
+      for (const headers of headersCandidates) {
+        try {
+          const url = makeUrl(pageToken, limit);
+          const r = UrlFetchApp.fetch(url, { method: 'get', headers, muteHttpExceptions: true });
+          const code = r.getResponseCode();
+          if (code >= 200 && code < 300) {
+            resp = JSON.parse(r.getContentText());
+            break;
+          }
+        } catch (e) {
+          // пробуем следующую комбинацию
         }
-      } catch (e) {}
+      }
+      if (resp) break;
     }
     if (!resp) break;
     const offers = (resp && resp.result && resp.result.offers) || resp.offers || [];
