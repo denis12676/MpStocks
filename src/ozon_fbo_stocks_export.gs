@@ -1737,9 +1737,12 @@ function fetchAllOzonPricesV5(clientId, apiKey) {
 }
 
 /**
- * Записывает детальные цены Ozon в формате как в ozon_price_example
+ * Записывает детальные цены Ozon в формате как в ozon_price_example начиная со столбца T
  */
 function writeOzonPricesDetailed(sheet, items) {
+  const startCol = 20; // T
+  const headerRow = 1;
+  
   const header = [
     'Артикул продавца',
     'ID товара', 
@@ -1832,21 +1835,27 @@ function writeOzonPricesDetailed(sheet, items) {
     ];
   });
 
-  // Очищаем лист и записываем данные
-  sheet.clearContents();
-  sheet.getRange(1, 1, 1, header.length).setValues([header]);
+  // Очищаем только диапазон T:AY (столбцы 20-51)
+  const lastRow = sheet.getLastRow();
+  if (lastRow > 0) {
+    sheet.getRange(1, startCol, lastRow, header.length).clearContent();
+  }
+  
+  // Записываем заголовки начиная со столбца T
+  sheet.getRange(headerRow, startCol, 1, header.length).setValues([header]);
   
   // Форматируем заголовки
-  sheet.getRange(1, 1, 1, header.length)
+  sheet.getRange(headerRow, startCol, 1, header.length)
     .setFontWeight('bold')
     .setBackground('#E8F0FE');
   
+  // Записываем данные начиная со строки 2, столбца T
   if (rows.length > 0) {
-    sheet.getRange(2, 1, rows.length, header.length).setValues(rows);
+    sheet.getRange(2, startCol, rows.length, header.length).setValues(rows);
   }
   
-  // Автоподбор ширины колонок
-  sheet.autoResizeColumns(1, header.length);
+  // Автоподбор ширины колонок для диапазона T:AY
+  sheet.autoResizeColumns(startCol, header.length);
 }
 
 // Вспомогательные функции для безопасного преобразования
