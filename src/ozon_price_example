@@ -1,0 +1,667 @@
+/**
+ * Google Apps Script для выгрузки цен по Ozon API:
+ * - /v5/product/info/prices — цены
+ * - /v2/product/list — полный листинг товаров продавца
+ *
+ * Листы таблицы:
+ * - "Input": A = offer_id (опционально), B = product_id (опционально). Пустые строки игнорируются.
+ * - "Prices": перезаписывается результатом.
+ *
+ * Использование:
+ * 1) Вставьте код в Apps Script привязанной к таблице: Extensions → Apps Script.
+ * 2) Обновите таблицу: появится меню "Ozon".
+ * 3) В меню "Ozon" задайте Client-Id и Api-Key или пропишите в Script Properties:
+ *    OZON_CLIENT_ID, OZON_API_KEY
+ * 4) Запустите один из пунктов меню:
+ *    - "Выгрузить цены (по Input)" — берёт id из листа "Input".
+ *    - "Выгрузить все товары продавца (цены)" — тянет весь каталог продавца и затем цены чанками.
+ */
+
+const OZON_API_URL = 'https://api-seller.ozon.ru/v5/product/info/prices';
+const OZON_LIST_URL = 'https://api-seller.ozon.ru/v2/product/list';
+const OZON_STOCKS_URL = 'https://api-seller.ozon.ru/v3/product/info/stocks';  
+const OZON_STOCKS_BY_WH_URL = 'https://api-seller.ozon.ru/v3/product/info/stocks-by-warehouse';
+const OZON_STOCKS_V2_URL = 'https://api-seller.ozon.ru/v2/product/info/stocks';
+const OZON_STOCKS_V1_URL = 'https://api-seller.ozon.ru/v1/product/info/stocks';
+const DEFAULT_VISIBILITY = 'ALL';
+const PAGE_LIMIT = 1000;       // лимит страниц по доке для цен
+const PRICES_CHUNK = 900;      // безопасный размер батча product_id для вызова цен
+const STOCKS_CHUNK = 900;      // безопасный размер батча product_id для вызова остатков
+
+function initMenu() {
+  try {
+    SpreadsheetApp.getUi()
+      .createMenu('Ozon')
+      .addItem('Установить ключи…', 'setSecrets')
+      .addItem('Добавить магазин…', 'addStore')
+      .addItem('Выбрать магазин…', 'pickStore')
+      .addItem('Выгрузить цены (по Input)', 'pullPricesFromSheet')
+      .addItem('Выгрузить все товары продавца (цены)', 'pullAllSellerPrices')
+      .addToUi();
+  } catch (e) {
+    // Нет UI в этом контексте (запуск из редактора/триггера)
+    Logger.log('initMenu skipped: ' + e);
+  }
+}
+
+function onOpen() {
+  initMenu();
+}
+
+function notify_(message) {
+  try {
+    SpreadsheetApp.getUi().alert(message);
+  } catch (e) {
+    Logger.log(message);
+  }
+}
+
+function setSecrets() {
+  const ui = SpreadsheetApp.getUi();
+  const p = PropertiesService.getScriptProperties();
+
+  const currentClientId = p.getProperty('OZON_CLIENT_ID') || '';
+  const currentApiKey = p.getProperty('OZON_API_KEY') || '';
+
+  const clientIdResp = ui.prompt('Client-Id', 'Текущий: ' + (currentClientId || '(не задан)'), ui.ButtonSet.OK_CANCEL);
+  if (clientIdResp.getSelectedButton() !== ui.Button.OK) return;
+
+  const apiKeyResp = ui.prompt('Api-Key', 'Текущий: ' + mask(currentApiKey), ui.ButtonSet.OK_CANCEL);
+  if (apiKeyResp.getSelectedButton() !== ui.Button.OK) return;
+
+  const clientId = clientIdResp.getResponseText().trim();
+  const apiKey = apiKeyResp.getResponseText().trim();
+  if (!clientId || !apiKey) {
+    ui.alert('Client-Id и Api-Key обязательны.');
+    return;
+  }
+  p.setProperty('OZON_CLIENT_ID', clientId);
+  p.setProperty('OZON_API_KEY', apiKey);
+  ui.alert('Сохранено.');
+}
+
+function mask(s) {
+  if (!s) return '';
+  if (s.length <= 6) return '***';
+  return s.slice(0, 3) + '***' + s.slice(-3);
+}
+
+function getStores_() {
+  const p = PropertiesService.getScriptProperties();
+  try {
+    const raw = p.getProperty('STORES') || '{}';
+    const parsed = JSON.parse(raw);
+    return (parsed && typeof parsed === 'object') ? parsed : {};
+  } catch (e) {
+    return {};
+  }
+}
+
+function saveStores_(obj) {
+  const p = PropertiesService.getScriptProperties();
+  p.setProperty('STORES', JSON.stringify(obj));
+}
+
+function addStore() {
+  const ui = SpreadsheetApp.getUi();
+  const nameResp = ui.prompt('Название магазина', 'Например: OZ FH', ui.ButtonSet.OK_CANCEL);
+  if (nameResp.getSelectedButton() !== ui.Button.OK) return;
+  const name = nameResp.getResponseText().trim();
+  if (!name) { ui.alert('Название обязательно.'); return; }
+
+  const sellerResp = ui.prompt('Seller ID (продавца)', 'Например: 526517', ui.ButtonSet.OK_CANCEL);
+  if (sellerResp.getSelectedButton() !== ui.Button.OK) return;
+  const sellerId = sellerResp.getResponseText().trim();
+  if (!sellerId) { ui.alert('Seller ID обязателен.'); return; }
+
+  const clientResp = ui.prompt('Client-Id', 'Введите Client-Id', ui.ButtonSet.OK_CANCEL);
+  if (clientResp.getSelectedButton() !== ui.Button.OK) return;
+  const clientId = clientResp.getResponseText().trim();
+  if (!clientId) { ui.alert('Client-Id обязателен.'); return; }
+
+  const keyResp = ui.prompt('Api-Key', 'Введите Api-Key', ui.ButtonSet.OK_CANCEL);
+  if (keyResp.getSelectedButton() !== ui.Button.OK) return;
+  const apiKey = keyResp.getResponseText().trim();
+  if (!apiKey) { ui.alert('Api-Key обязателен.'); return; }
+
+  const stores = getStores_();
+  stores[name] = { sellerId: sellerId, clientId: clientId, apiKey: apiKey };
+  saveStores_(stores);
+  PropertiesService.getScriptProperties().setProperty('CURRENT_STORE', name);
+  ui.alert('Сохранено. Текущий магазин: ' + name);
+}
+
+function pickStore() {
+  const ui = SpreadsheetApp.getUi();
+  const stores = getStores_();
+  const names = Object.keys(stores);
+  if (names.length === 0) { ui.alert('Список магазинов пуст. Сначала используйте "Добавить магазин…"'); return; }
+
+  const list = names.join('\n');
+  const resp = ui.prompt('Выбор магазина', 'Доступные:\n' + list + '\n\nВведите имя:', ui.ButtonSet.OK_CANCEL);
+  if (resp.getSelectedButton() !== ui.Button.OK) return;
+  const name = resp.getResponseText().trim();
+  if (!stores[name]) { ui.alert('Магазин не найден.'); return; }
+  PropertiesService.getScriptProperties().setProperty('CURRENT_STORE', name);
+  ui.alert('Текущий магазин: ' + name);
+}
+
+function pullPricesFromSheet() {
+  const ss = SpreadsheetApp.getActive();
+  const input = ss.getSheetByName('Input') || ss.insertSheet('Input');
+  const outName = getCurrentStoreName_() || 'OZ FH';
+  const out = ss.getSheetByName(outName) || ss.insertSheet(outName);
+
+  const { clientId, apiKey } = getAuth_();
+  if (!clientId || !apiKey) {
+    throw new Error('Задайте OZON_CLIENT_ID и OZON_API_KEY через меню "Ozon" или Script properties.');
+  }
+
+  const { offerIds, productIds } = readIds_(input);
+  if (offerIds.length === 0 && productIds.length === 0) {
+    throw new Error('В "Input" нет offer_id и product_id.');
+  }
+
+  const items = fetchAllPrices_({ offerIds, productIds, visibility: DEFAULT_VISIBILITY, clientId, apiKey });
+
+  writePrices_(out, items);
+  notify_(`Готово: ${items.length} товаров.`);
+}
+
+function pullAllSellerPrices() {
+  const ss = SpreadsheetApp.getActive();
+  const outName = getCurrentStoreName_() || 'OZ FH';
+  const out = ss.getSheetByName(outName) || ss.insertSheet(outName);
+
+  const { clientId, apiKey } = getAuth_();
+  if (!clientId || !apiKey) {
+    throw new Error('Задайте OZON_CLIENT_ID и OZON_API_KEY через меню "Ozon" или Script properties.');
+  }
+
+  // Выгружаем все товары напрямую через цены: visibility=ALL, курсор до конца
+  const allItems = fetchAllPrices_({
+    offerIds: [],
+    productIds: [],
+    visibility: DEFAULT_VISIBILITY,
+    clientId,
+    apiKey
+  });
+
+  // Остатки по всем product_id
+  const productIdsUnique = Array.from(new Set((allItems || []).map(it => String(it.product_id))));
+  const stocksMap = fetchStocksForProducts_({ clientId, apiKey, productIds: productIdsUnique });
+
+  writePricesWithStocks_(out, allItems, stocksMap);
+  notify_(`Готово: цен ${allItems.length}. Остатков по товарам: ${stocksMap.size}.`);
+}
+
+function getAuth_() {
+  const p = PropertiesService.getScriptProperties();
+  const current = (p.getProperty('CURRENT_STORE') || '').trim();
+  if (current) {
+    try {
+      const stores = JSON.parse(p.getProperty('STORES') || '{}');
+      const s = stores[current];
+      if (s && s.clientId && s.apiKey) {
+        return { clientId: s.clientId, apiKey: s.apiKey };
+      }
+    } catch (e) {
+      Logger.log('Invalid STORES JSON: ' + e);
+    }
+  }
+  return {
+    clientId: p.getProperty('OZON_CLIENT_ID') || '',
+    apiKey: p.getProperty('OZON_API_KEY') || '',
+  };
+}
+
+function getCurrentStoreName_() {
+  const p = PropertiesService.getScriptProperties();
+  const name = (p.getProperty('CURRENT_STORE') || '').trim();
+  return name || '';
+}
+
+function readIds_(sheet) {
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 1) return { offerIds: [], productIds: [] };
+
+  const range = sheet.getRange(1, 1, lastRow, 2).getValues();
+  const offerIds = [];
+  const productIds = [];
+
+  for (let i = 0; i < range.length; i++) {
+    const offer = (range[i][0] || '').toString().trim();
+    const product = (range[i][1] || '').toString().trim();
+    if (offer) offerIds.push(offer);
+    if (product) productIds.push(product);
+  }
+  return { offerIds, productIds };
+}
+
+function fetchAllSellerProductIds_({ clientId, apiKey, visibility }) {
+  // /v2/product/list — постранично по last_id
+  const maxLimit = 1000;
+  let last_id = '';
+  const items = [];
+  let page = 0;
+
+  while (true) {
+    const body = {
+      filter: { visibility: visibility || 'ALL' },
+      last_id,
+      limit: maxLimit
+    };
+
+    const res = callOzonRaw_(clientId, apiKey, OZON_LIST_URL, body);
+    const list = (res && res.items) || [];
+    if (list.length === 0) break;
+
+    for (const it of list) {
+      items.push({
+        product_id: it.product_id,
+        offer_id: it.offer_id
+      });
+    }
+
+    if (!res.last_id || res.last_id === last_id) break;
+    last_id = res.last_id;
+    page++;
+    Utilities.sleep(200);
+    if (page > 5000) throw new Error('Слишком много страниц в листинге, остановлено.');
+  }
+
+  return items;
+}
+
+function fetchAllPrices_({ offerIds, productIds, visibility, clientId, apiKey }) {
+  const bodyBase = {
+    cursor: '',
+    filter: {},
+    limit: PAGE_LIMIT,
+  };
+
+  if (offerIds.length > 0) bodyBase.filter.offer_id = offerIds;
+  if (productIds.length > 0) bodyBase.filter.product_id = productIds;
+  if (visibility) bodyBase.filter.visibility = visibility;
+
+  let cursor = '';
+  const all = [];
+  let page = 0;
+
+  do {
+    const body = { ...bodyBase, cursor };
+    const resp = callOzon_(clientId, apiKey, body);
+    if (resp.items && resp.items.length) {
+      all.push(...resp.items);
+    }
+    cursor = resp.cursor || '';
+    page++;
+    Utilities.sleep(150);
+    if (page > 1000) throw new Error('Слишком много страниц в ценах, остановлено.');
+  } while (cursor);
+
+  return all;
+}
+
+function callOzon_(clientId, apiKey, body) {
+  const options = {
+    method: 'post',
+    contentType: 'application/json',
+    payload: JSON.stringify(body),
+    headers: { 'Client-Id': clientId, 'Api-Key': apiKey },
+    muteHttpExceptions: true,
+  };
+
+  let attempt = 0;
+  const maxAttempts = 5;
+  let lastErr = null;
+
+  while (attempt < maxAttempts) {
+    const res = UrlFetchApp.fetch(OZON_API_URL, options);
+    const code = res.getResponseCode();
+    const text = res.getContentText();
+
+    if (code >= 200 && code < 300) {
+      try { return JSON.parse(text); } catch (e) {
+        throw new Error('Не удалось распарсить JSON: ' + e);
+      }
+    }
+
+    if (code === 429 || code >= 500) {
+      const delay = Math.min(1000 * Math.pow(2, attempt), 10000);
+      Utilities.sleep(delay);
+      attempt++;
+      lastErr = `HTTP ${code}: ${text}`;
+      continue;
+    }
+
+    throw new Error(`Ошибка API: HTTP ${code}: ${text}`);
+  }
+
+  throw new Error(`Повторные ошибки API: ${lastErr || 'unknown error'}`);
+}
+
+function callOzonRaw_(clientId, apiKey, url, body) {
+  const options = {
+    method: 'post',
+    contentType: 'application/json',
+    payload: JSON.stringify(body),
+    headers: { 'Client-Id': clientId, 'Api-Key': apiKey },
+    muteHttpExceptions: true,
+  };
+
+  let attempt = 0;
+  const maxAttempts = 5;
+  let lastErr = null;
+
+  while (attempt < maxAttempts) {
+    const res = UrlFetchApp.fetch(url, options);
+    const code = res.getResponseCode();
+    const text = res.getContentText();
+
+    if (code >= 200 && code < 300) {
+      try { return JSON.parse(text); } catch (e) {
+        throw new Error('Не удалось распарсить JSON: ' + e);
+      }
+    }
+
+    if (code === 429 || code >= 500) {
+      const delay = Math.min(1000 * Math.pow(2, attempt), 10000);
+      Utilities.sleep(delay);
+      attempt++;
+      lastErr = `HTTP ${code}: ${text}`;
+      continue;
+    }
+
+    throw new Error(`Ошибка API: ${url} → HTTP ${code}: ${text}`);
+  }
+
+  throw new Error(`Повторные ошибки API: ${url} → ${lastErr || 'unknown error'}`);
+}
+
+function fetchStocksForProducts_({ clientId, apiKey, productIds }) {
+  // Возвращает Map(product_id -> { present_total, byWarehouse: [...], byType: {fbo: n, fbs: n} })
+  const map = new Map();
+  for (let i = 0; i < productIds.length; i += STOCKS_CHUNK) {
+    const chunk = productIds.slice(i, i + STOCKS_CHUNK);
+    // некоторые версии API требуют пагинации last_id/limit
+    const baseBody = { filter: { product_id: chunk, visibility: 'ALL' }, last_id: '', limit: 1000 };
+    let res, data, items;
+    let aggregated = [];
+
+    const endpoints = [OZON_STOCKS_URL, OZON_STOCKS_BY_WH_URL, OZON_STOCKS_V2_URL, OZON_STOCKS_V1_URL];
+    let succeeded = false;
+    let lastError = null;
+
+    for (const url of endpoints) {
+      try {
+        let page = 0;
+        let last_id = '';
+        aggregated = [];
+        do {
+          const body = Object.assign({}, baseBody, { last_id });
+          res = callOzonRaw_(clientId, apiKey, url, body);
+          data = (res && res.result) || res || {};
+          items = data.items || data.stocks || res.items || data.products || [];
+          if (Array.isArray(items) && items.length > 0) aggregated.push(...items);
+          last_id = data.last_id || data.cursor || '';
+          page++;
+          Utilities.sleep(100);
+          if (page > 2000) break;
+        } while (last_id);
+        succeeded = true;
+        break;
+      } catch (e) {
+        lastError = e;
+        continue;
+      }
+    }
+
+    if (!succeeded) {
+      Logger.log('Stocks fetch failed for chunk, continuing without stocks. Last error: ' + (lastError && lastError.message));
+      continue;
+    }
+
+    for (const it of aggregated) {
+      // Популярные варианты формата:
+      // { product_id, offer_id, stocks: [{present, reserved, type, warehouse_id}] }
+      const pid = String(it.product_id || it.productId || (it.product && it.product.id));
+      const stocksArr = it.stocks || it.warehouse_stocks || it.warehouses || [];
+      let presentTotal = 0;
+      let fbo = 0, fbs = 0;
+      const byWarehouse = [];
+      for (const s of stocksArr) {
+        const present = Number(s.present || 0);
+        presentTotal += present;
+        const t = (s.type || '').toString().toLowerCase();
+        if (t === 'fbo') fbo += present;
+        if (t === 'fbs') fbs += present;
+        byWarehouse.push({
+          warehouse_id: s.warehouse_id || s.warehouseId || '',
+          type: s.type || '',
+          present: present,
+          reserved: Number(s.reserved || 0)
+        });
+      }
+      map.set(pid, { present_total: presentTotal, byWarehouse, byType: { fbo, fbs } });
+    }
+
+    Utilities.sleep(150);
+  }
+  return map;
+}
+
+function writePrices_(sheet, items) {
+  const header = [
+    'Артикул продавца',
+    'ID товара',
+    'Валюта',
+    'Цена',
+    'Старая цена',
+    'Маркетинговая цена',
+    'Маркетинговая цена продавца',
+    'Мин. цена',
+    'Нетто цена',
+    'Розничная цена',
+    'НДС',
+    'Эквайринг',
+    '% продаж FBO',
+    '% продаж FBS',
+    'FBO доставка покупателю',
+    'FBO прямой поток мин',
+    'FBO прямой поток макс',
+    'FBO возврат',
+    'FBS доставка покупателю',
+    'FBS прямой поток мин',
+    'FBS прямой поток макс',
+    'FBS первая миля мин',
+    'FBS первая миля макс',
+    'FBS возврат',
+    'Индекс цены (цвет)',
+    'Ozon индекс мин. цена',
+    'Ozon индекс валюта',
+    'Ozon индекс значение',
+    'Внешний индекс мин. цена',
+    'Внешний индекс валюта',
+    'Внешний индекс значение',
+    'Собственные МП мин. цена',
+    'Собственные МП валюта',
+    'Собственные МП значение',
+    'Объёмный вес',
+  ];
+
+  const sorted = items.slice().sort((a, b) => {
+    const ap = Number(((a.price || {}).price) || 0);
+    const bp = Number(((b.price || {}).price) || 0);
+    return bp - ap; // по убыванию
+  });
+
+  const rows = sorted.map((it) => {
+    const p = it.price || {};
+    const c = it.commissions || {};
+    const idx = it.price_indexes || {};
+    const oz = (idx.ozon_index_data || {});
+    const ex = (idx.external_index_data || {});
+    const sm = (idx.self_marketplaces_index_data || {});
+    return [
+      safe(it.offer_id),
+      safe(it.product_id),
+      safe(p.currency_code),
+      num(p.price),
+      num(p.old_price),
+      num(p.marketing_price),
+      num(p.marketing_seller_price),
+      num(p.min_price),
+      num(p.net_price),
+      num(p.retail_price),
+      num(p.vat),
+      num(it.acquiring),
+      num(c.sales_percent_fbo),
+      num(c.sales_percent_fbs),
+      num(c.fbo_deliv_to_customer_amount),
+      num(c.fbo_direct_flow_trans_min_amount),
+      num(c.fbo_direct_flow_trans_max_amount),
+      num(c.fbo_return_flow_amount),
+      num(c.fbs_deliv_to_customer_amount),
+      num(c.fbs_direct_flow_trans_min_amount),
+      num(c.fbs_direct_flow_trans_max_amount),
+      num(c.fbs_first_mile_min_amount),
+      num(c.fbs_first_mile_max_amount),
+      num(c.fbs_return_flow_amount),
+      safe(idx.color_index),
+      num(oz.min_price),
+      safe(oz.min_price_currency),
+      num(oz.price_index_value),
+      num(ex.min_price),
+      safe(ex.min_price_currency),
+      num(ex.price_index_value),
+      num(sm.min_price),
+      safe(sm.min_price_currency),
+      num(sm.price_index_value),
+      num(it.volume_weight),
+    ];
+  });
+
+  sheet.clearContents();
+  sheet.getRange(1, 1, 1, header.length).setValues([header]);
+  if (rows.length > 0) {
+    sheet.getRange(2, 1, rows.length, header.length).setValues(rows);
+  }
+}
+
+function writePricesWithStocks_(sheet, items, stocksMap) {
+  const header = [
+    'Артикул продавца',
+    'ID товара',
+    'Валюта',
+    'Цена',
+    'Старая цена',
+    'Маркетинговая цена',
+    'Маркетинговая цена продавца',
+    'Мин. цена',
+    'Нетто цена',
+    'Розничная цена',
+    'НДС',
+    'Эквайринг',
+    '% продаж FBO',
+    '% продаж FBS',
+    'FBO доставка покупателю',
+    'FBO прямой поток мин',
+    'FBO прямой поток макс',
+    'FBO возврат',
+    'FBS доставка покупателю',
+    'FBS прямой поток мин',
+    'FBS прямой поток макс',
+    'FBS первая миля мин',
+    'FBS первая миля макс',
+    'FBS возврат',
+    'Индекс цены (цвет)',
+    'Ozon индекс мин. цена',
+    'Ozon индекс валюта',
+    'Ozon индекс значение',
+    'Внешний индекс мин. цена',
+    'Внешний индекс валюта',
+    'Внешний индекс значение',
+    'Собственные МП мин. цена',
+    'Собственные МП валюта',
+    'Собственные МП значение',
+    'Объёмный вес',
+    'Остаток всего',
+    'В наличии',
+  ];
+
+  const sorted = items.slice().sort((a, b) => {
+    const ap = Number(((a.price || {}).price) || 0);
+    const bp = Number(((b.price || {}).price) || 0);
+    return bp - ap; // по убыванию
+  });
+
+  const rows = sorted.map((it) => {
+    const p = it.price || {};
+    const c = it.commissions || {};
+    const idx = it.price_indexes || {};
+    const oz = (idx.ozon_index_data || {});
+    const ex = (idx.external_index_data || {});
+    const sm = (idx.self_marketplaces_index_data || {});
+    const pid = String(it.product_id);
+    const stock = stocksMap.get(pid);
+    const presentTotal = stock ? Number(stock.present_total || 0) : '';
+    const inStock = stock ? (stock.present_total > 0 ? 'TRUE' : 'FALSE') : '';
+    return [
+      safe(it.offer_id),
+      safe(it.product_id),
+      safe(p.currency_code),
+      num(p.price),
+      num(p.old_price),
+      num(p.marketing_price),
+      num(p.marketing_seller_price),
+      num(p.min_price),
+      num(p.net_price),
+      num(p.retail_price),
+      num(p.vat),
+      num(it.acquiring),
+      num(c.sales_percent_fbo),
+      num(c.sales_percent_fbs),
+      num(c.fbo_deliv_to_customer_amount),
+      num(c.fbo_direct_flow_trans_min_amount),
+      num(c.fbo_direct_flow_trans_max_amount),
+      num(c.fbo_return_flow_amount),
+      num(c.fbs_deliv_to_customer_amount),
+      num(c.fbs_direct_flow_trans_min_amount),
+      num(c.fbs_direct_flow_trans_max_amount),
+      num(c.fbs_first_mile_min_amount),
+      num(c.fbs_first_mile_max_amount),
+      num(c.fbs_return_flow_amount),
+      safe(idx.color_index),
+      num(oz.min_price),
+      safe(oz.min_price_currency),
+      num(oz.price_index_value),
+      num(ex.min_price),
+      safe(ex.min_price_currency),
+      num(ex.price_index_value),
+      num(sm.min_price),
+      safe(sm.min_price_currency),
+      num(sm.price_index_value),
+      num(it.volume_weight),
+      presentTotal,
+      inStock,
+    ];
+  });
+
+  sheet.clearContents();
+  sheet.getRange(1, 1, 1, header.length).setValues([header]);
+  if (rows.length > 0) {
+    sheet.getRange(2, 1, rows.length, header.length).setValues(rows);
+  }
+}
+
+function safe(v) {
+  if (v === null || v === undefined) return '';
+  return v;
+}
+
+function num(v) {
+  if (v === null || v === undefined || v === '') return '';
+  const n = Number(v);
+  return isNaN(n) ? '' : n;
+}
