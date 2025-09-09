@@ -1,415 +1,123 @@
-// ================================
-// СКРИПТ ДЛЯ ВЫГРУЗКИ ЦЕН ИЗ ЯНДЕКС МАРКЕТА В GOOGLE SHEETS
-// ================================
+/***** CONFIG *****/
+// Укажи email для оповещений об ошибках (можно оставить пустым)
+const ALERT_EMAIL = ''; // например: 'you@example.com'
+// Вставь webhook URL своего Telegram-бота (опционально)
+const TELEGRAM_WEBHOOK = ''; // например: 'https://api.telegram.org/bot<token>/sendMessage?chat_id=<id>'
 
-// ================================
-// НАСТРОЙКИ БЕРЁМ ИЗ АКТИВНОГО МАГАЗИНА (getYandexConfig)
-// ================================
-// Ожидается, что где-то в проекте определены функции управления магазинами Яндекс Маркета,
-// и `getYandexConfig()` вернёт: { API_TOKEN, CAMPAIGN_ID, STORE_NAME }
-
-// ================================
-// ОСНОВНЫЕ ФУНКЦИИ
-// ================================
-
-/**
- * Главная функция для выгрузки всех цен
- */
-function exportAllPrices() {
-  try {
-    console.log('Начинаем выгрузку цен...');
-    
-    const sheet = getOrCreateSheet('Цены товаров');
-    clearAndSetupSheet(sheet);
-    
-    let pageToken = null;
-    let totalProcessed = 0;
-    let rowIndex = 2; // Начинаем с второй строки (после заголовков)
-    
-    do {
-      const response = fetchPricesFromAPI(pageToken);
-      
-      if (response.result && response.result.offers) {
-        const offers = response.result.offers;
-        console.log(`Получено ${offers.length} товаров`);
-        
-        // Записываем данные в таблицу
-        const data = offers.map(offer => [
-          offer.id || offer.offerId || '',
-          offer.marketSku || '',
-          offer.price ? offer.price.value : '',
-          offer.price ? offer.price.currencyId : 'RUR',
-          offer.price ? offer.price.discountBase || '' : '',
-          offer.price ? offer.price.vat || '' : '',
-          offer.updatedAt ? formatDate(offer.updatedAt) : ''
-        ]);
-        
-        // Записываем блок данных
-        if (data.length > 0) {
-          const range = sheet.getRange(rowIndex, 1, data.length, 7);
-          range.setValues(data);
-          rowIndex += data.length;
-        }
-        
-        totalProcessed += offers.length;
-        pageToken = response.result.paging ? response.result.paging.nextPageToken : null;
-        
-        // Добавляем небольшую задержку для соблюдения лимитов API
-        if (pageToken) {
-          Utilities.sleep(100);
-        }
-        
-      } else {
-        console.error('Неожиданный формат ответа:', response);
-        break;
-      }
-    } while (pageToken);
-    
-    // Добавляем информацию об обновлении
-    sheet.getRange(1, 9).setValue('Обновлено:');
-    sheet.getRange(1, 10).setValue(new Date());
-    sheet.getRange(2, 9).setValue('Всего товаров:');
-    sheet.getRange(2, 10).setValue(totalProcessed);
-    
-    console.log(`✅ Успешно выгружено ${totalProcessed} товаров`);
-    SpreadsheetApp.getUi().alert(`Выгрузка завершена!\n\nВыгружено товаров: ${totalProcessed}\nЛист: "${sheet.getName()}"`);
-    
-  } catch (error) {
-    console.error('Ошибка при выгрузке:', error);
-    SpreadsheetApp.getUi().alert(`Ошибка: ${error.message}`);
-  }
-}
-
-/**
- * Выгрузка цен конкретных товаров по их SKU
- */
-function exportSpecificPrices(offerIds = []) {
-  // Если массив пустой, берем SKU из диапазона A2:A в текущем листе
-  if (offerIds.length === 0) {
-    const sheet = SpreadsheetApp.getActiveSheet();
-    const values = sheet.getRange('A2:A').getValues().filter(row => row[0] !== '');
-    offerIds = values.map(row => row[0].toString());
-  }
-  
-  if (offerIds.length === 0) {
-    SpreadsheetApp.getUi().alert('Не найдены SKU для выгрузки. Укажите их в столбце A или передайте в параметрах функции.');
+/***** ENTRYPOINT *****/
+// Основной запуск по триггеру (раз в час)
+function syncAllStocksHourly() {
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(10000)) {
+    console.warn('Запуск пропущен: прошлый ещё выполняется.');
     return;
   }
-  
+
+  const started = new Date();
+  const props = PropertiesService.getScriptProperties();
+  props.setProperty('stocks.lastRunStartedAt', started.toISOString());
+
+  const results = [];
   try {
-    const sheet = getOrCreateSheet('Конкретные цены');
-    clearAndSetupSheet(sheet);
-    
-    // API позволяет запрашивать до 500 товаров за раз
-    const batchSize = 500;
-    let totalProcessed = 0;
-    let rowIndex = 2;
-    
-    for (let i = 0; i < offerIds.length; i += batchSize) {
-      const batch = offerIds.slice(i, i + batchSize);
-      const response = fetchSpecificPrices(batch);
-      
-      if (response.result && response.result.offers) {
-        const offers = response.result.offers;
-        
-        const data = offers.map(offer => [
-          offer.offerId || offer.id || '',
-          offer.marketSku || '',
-          offer.price ? offer.price.value : '',
-          offer.price ? offer.price.currencyId : 'RUR',
-          offer.price ? offer.price.discountBase || '' : '',
-          offer.price ? offer.price.vat || '' : '',
-          offer.updatedAt ? formatDate(offer.updatedAt) : ''
-        ]);
-        
-        if (data.length > 0) {
-          const range = sheet.getRange(rowIndex, 1, data.length, 7);
-          range.setValues(data);
-          rowIndex += data.length;
-        }
-        
-        totalProcessed += offers.length;
-      }
-      
-      // Задержка между запросами
-      if (i + batchSize < offerIds.length) {
-        Utilities.sleep(200);
-      }
-    }
-    
-    sheet.getRange(1, 9).setValue('Обновлено:');
-    sheet.getRange(1, 10).setValue(new Date());
-    sheet.getRange(2, 9).setValue('Найдено товаров:');
-    sheet.getRange(2, 10).setValue(totalProcessed);
-    
-    console.log(`✅ Успешно выгружено ${totalProcessed} из ${offerIds.length} запрошенных товаров`);
-    SpreadsheetApp.getUi().alert(`Выгрузка завершена!\n\nНайдено товаров: ${totalProcessed} из ${offerIds.length} запрошенных`);
-    
-  } catch (error) {
-    console.error('Ошибка при выгрузке конкретных товаров:', error);
-    SpreadsheetApp.getUi().alert(`Ошибка: ${error.message}`);
+    results.push(runStep('WB', exportAllWBStoresStocksStatisticsAPI));
+    results.push(runStep('YM', exportAllYandexStoresStocks));
+    results.push(runStep('OZON', exportAllStoresStocks));
+  } finally {
+    lock.releaseLock();
+    props.setProperty('stocks.lastRunFinishedAt', new Date().toISOString());
+  }
+
+  const durationSec = Math.round((Date.now() - started.getTime()) / 1000);
+  const failed = results.filter(r => !r.ok);
+  console.log('syncAll summary:', JSON.stringify({ durationSec, results }, null, 2));
+
+  if (failed.length) {
+    const msg = [
+      `Ошибки при выгрузке остатков ( ${durationSec}s ):`,
+      ...failed.map(f => `• ${f.name}: ${f.error}`)
+    ].join('\n');
+    notify(msg);
   }
 }
 
-/**
- * Получение списка всех кампаний и магазинов
- */
-function getCampaigns() {
+/***** STEP WRAPPER *****/
+function runStep(name, fn) {
   try {
-    const base = 'https://api.partner.market.yandex.ru';
-    const urls = [`${base}/campaigns`, `${base}/v2/campaigns`];
-    const headersList = getAuthHeaders();
-    let responseData = null;
-    let ok = false;
-    let lastErr = '';
-
-    for (const u of urls) {
-      for (const h of headersList) {
-        try {
-          const r = UrlFetchApp.fetch(u, { method: 'GET', headers: h, muteHttpExceptions: true });
-          const code = r.getResponseCode();
-          const txt = r.getContentText();
-          if (code >= 200 && code < 300) {
-            responseData = JSON.parse(txt);
-            ok = true;
-            break;
-          } else {
-            lastErr = `HTTP ${code}: ${txt}`;
-          }
-        } catch (e) {
-          lastErr = e.message;
-        }
-      }
-      if (ok) break;
-    }
-    if (!ok) {
-      throw new Error(`Не удалось получить кампании: ${lastErr || 'unknown error'}`);
-    }
-    
-    const sheet = getOrCreateSheet('Список кампаний');
-    sheet.clear();
-    
-    // Заголовки
-    sheet.getRange(1, 1, 1, 5).setValues([['Campaign ID', 'Название', 'Business ID', 'Бизнес', 'Модель размещения']]);
-    sheet.getRange(1, 1, 1, 5).setFontWeight('bold').setBackground('#e1f5fe');
-    
-    if (responseData.campaigns && responseData.campaigns.length > 0) {
-      const data = responseData.campaigns.map(campaign => [
-        campaign.id,
-        campaign.domain || '',
-        campaign.business ? campaign.business.id : '',
-        campaign.business ? campaign.business.name : '',
-        campaign.placementType || ''
-      ]);
-      
-      sheet.getRange(2, 1, data.length, 5).setValues(data);
-      
-      // Автоподбор ширины столбцов
-      for (let i = 1; i <= 5; i++) {
-        sheet.autoResizeColumn(i);
-      }
-      
-      console.log(`Найдено кампаний: ${responseData.campaigns.length}`);
-      SpreadsheetApp.getUi().alert(`Найдено ${responseData.campaigns.length} кампаний.\n\nИспользуйте значения из колонки "Campaign ID" в настройках скрипта.`);
-    } else {
-      SpreadsheetApp.getUi().alert('Кампании не найдены. Проверьте права доступа токена.');
-    }
-    
-  } catch (error) {
-    console.error('Ошибка получения кампаний:', error);
-    SpreadsheetApp.getUi().alert(`Ошибка получения списка кампаний: ${error.message}`);
-  }
-}
-
-// ================================
-// ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
-// ================================
-
-/**
- * Формирование заголовков авторизации
- */
-function getAuthHeaders() {
-  const cfg = getYandexConfig ? getYandexConfig() : null;
-  const token = cfg && (cfg.API_TOKEN || cfg.API_KEY || cfg.apiKey);
-  if (!token) return [{ 'Content-Type': 'application/json' }];
-  // Как в выгрузке остатков: используем Api-Key заголовок
-  return [{ 'Api-Key': token, 'Content-Type': 'application/json' }];
-}
-
-/**
- * Запрос к API для получения всех цен
- */
-function fetchPricesFromAPI(pageToken = null, limit = 1000) {
-  const cfg = getYandexConfig ? getYandexConfig() : null;
-  const campaignId = cfg && (cfg.CAMPAIGN_ID || cfg.campaign_id);
-  const base = 'https://api.partner.market.yandex.ru';
-  const urls = [
-    `${base}/campaigns/${campaignId}/offer-prices`,
-    `${base}/v2/campaigns/${campaignId}/offer-prices`
-  ];
-
-  const params = [];
-  if (limit) params.push(`limit=${limit}`);
-  if (pageToken) params.push(`page_token=${encodeURIComponent(pageToken)}`);
-  const qs = params.length ? `?${params.join('&')}` : '';
-
-  const headersList = getAuthHeaders();
-
-  let lastErr = null;
-  for (const u of urls) {
-    for (const h of headersList) {
-      try {
-        const response = UrlFetchApp.fetch(u + qs, { method: 'GET', headers: h, muteHttpExceptions: true });
-        const code = response.getResponseCode();
-        if (code >= 200 && code < 300) {
-          return JSON.parse(response.getContentText());
-        }
-        lastErr = `HTTP ${code}: ${response.getContentText()}`;
-      } catch (e) {
-        lastErr = e.message;
-      }
-    }
-  }
-  throw new Error(`Не удалось получить цены: ${lastErr || 'unknown error'}`);
-}
-
-/**
- * Запрос цен конкретных товаров
- */
-function fetchSpecificPrices(offerIds) {
-  const cfg = getYandexConfig ? getYandexConfig() : null;
-  const campaignId = cfg && (cfg.CAMPAIGN_ID || cfg.campaign_id);
-  const base = 'https://api.partner.market.yandex.ru';
-  const urls = [
-    `${base}/campaigns/${campaignId}/offer-prices`,
-    `${base}/v2/campaigns/${campaignId}/offer-prices`
-  ];
-  const payload = { offerIds };
-  const headersList = getAuthHeaders();
-  let lastErr = null;
-  for (const u of urls) {
-    for (const h of headersList) {
-      try {
-        const response = UrlFetchApp.fetch(u, { method: 'POST', headers: h, payload: JSON.stringify(payload), muteHttpExceptions: true });
-        const code = response.getResponseCode();
-        if (code >= 200 && code < 300) {
-          return JSON.parse(response.getContentText());
-        }
-        lastErr = `HTTP ${code}: ${response.getContentText()}`;
-      } catch (e) {
-        lastErr = e.message;
-      }
-    }
-  }
-  throw new Error(`Не удалось получить цены (по SKU): ${lastErr || 'unknown error'}`);
-}
-
-/**
- * Получение или создание листа
- */
-function getOrCreateSheet(sheetName) {
-  const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
-  let sheet = spreadsheet.getSheetByName(sheetName);
-  
-  if (!sheet) {
-    sheet = spreadsheet.insertSheet(sheetName);
-  }
-  
-  return sheet;
-}
-
-/**
- * Очистка и настройка листа
- */
-function clearAndSetupSheet(sheet) {
-  sheet.clear();
-  
-  // Заголовки
-  const headers = [
-    'SKU товара',
-    'Market SKU',
-    'Цена',
-    'Валюта',
-    'Цена без скидки',
-    'НДС',
-    'Дата обновления'
-  ];
-  
-  sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
-  sheet.getRange(1, 1, 1, headers.length).setFontWeight('bold').setBackground('#e8f5e8');
-  
-  // Автоподбор ширины
-  for (let i = 1; i <= headers.length; i++) {
-    sheet.autoResizeColumn(i);
-  }
-  
-  // Заморозка заголовка
-  sheet.setFrozenRows(1);
-}
-
-/**
- * Форматирование даты
- */
-function formatDate(dateString) {
-  try {
-    return new Date(dateString).toLocaleString('ru-RU');
+    const data = runWithRetry(() => {
+      // если твои функции что-то возвращают — попадёт в data
+      return fn();
+    }, { tries: 5, baseMs: 600, maxMs: 8000 });
+    return { name, ok: true, data: toPlainJsonSafe(data) };
   } catch (e) {
-    return dateString;
+    const msg = e && e.stack ? e.stack : String(e);
+    console.error(`${name} failed:`, msg);
+    return { name, ok: false, error: String(e) };
   }
 }
 
-// ================================
-// ДОПОЛНИТЕЛЬНЫЕ ФУНКЦИИ
-// ================================
+function toPlainJsonSafe(v) {
+  try { return JSON.parse(JSON.stringify(v)); } catch (_) { return String(v); }
+}
 
-/**
- * Тестовая функция для проверки подключения
- */
-function testConnection() {
+/***** RETRY WITH EXPONENTIAL BACKOFF *****/
+function runWithRetry(fn, opts) {
+  const tries = opts?.tries ?? 4;
+  const baseMs = opts?.baseMs ?? 400;
+  const maxMs  = opts?.maxMs  ?? 7000;
+
+  let lastErr;
+  for (let i = 0; i < tries; i++) {
+    try {
+      return fn();
+    } catch (e) {
+      lastErr = e;
+      const msg = String(e);
+      // Повторяем только на типовых временных сбоях API/сети/квотах:
+      const retryable = /429|Rate|Too Many|Timeout|Timed out|Exceeded|Quota|Internal|Network|Service|5\d\d/i.test(msg);
+      if (!retryable || i === tries - 1) throw e;
+
+      const delay = Math.min(maxMs, baseMs * Math.pow(2, i)) + Math.floor(Math.random() * 250);
+      console.warn(`Retry ${i + 1}/${tries} через ${delay} мс из-за: ${msg}`);
+      Utilities.sleep(delay);
+    }
+  }
+  throw lastErr;
+}
+
+/***** NOTIFY *****/
+function notify(text) {
   try {
-    console.log('Тестируем подключение к API...');
-    const base = 'https://api.partner.market.yandex.ru';
-    const urls = [`${base}/campaigns`, `${base}/v2/campaigns`];
-    const headersList = getAuthHeaders();
-    let ok = false;
-    let lastErr = '';
-    for (const u of urls) {
-      for (const h of headersList) {
-        try {
-          const r = UrlFetchApp.fetch(u, { method: 'GET', headers: h, muteHttpExceptions: true });
-          const code = r.getResponseCode();
-          if (code >= 200 && code < 300) { ok = true; break; }
-          lastErr = `HTTP ${code}: ${r.getContentText()}`;
-        } catch (e) {
-          lastErr = e.message;
-        }
-      }
-      if (ok) break;
+    if (ALERT_EMAIL) MailApp.sendEmail(ALERT_EMAIL, 'Stocks sync: ошибки', text);
+  } catch (e) { console.warn('Mail notify failed', e); }
+  try {
+    if (TELEGRAM_WEBHOOK) {
+      UrlFetchApp.fetch(TELEGRAM_WEBHOOK, {
+        method: 'post',
+        contentType: 'application/json',
+        payload: JSON.stringify({ text })
+      });
     }
-    if (ok) {
-      console.log('✅ Подключение к API успешно!');
-      SpreadsheetApp.getUi().alert('✅ Подключение к API Яндекс Маркета успешно!\n\nМожно приступать к выгрузке данных.');
-    } else {
-      console.error('❌ Ошибка подключения:', lastErr);
-      SpreadsheetApp.getUi().alert(`❌ Ошибка подключения к API:\n\n${lastErr || 'Unknown error'}\n\nПроверьте токен и campaign_id активного магазина.`);
-    }
-    
-  } catch (error) {
-    console.error('❌ Ошибка при тестировании:', error);
-    SpreadsheetApp.getUi().alert(`❌ Ошибка при тестировании подключения:\n\n${error.message}`);
-  }
+  } catch (e) { console.warn('TG notify failed', e); }
 }
 
-/**
- * Создание меню в Google Sheets
- */
-function onOpen() {
-  const ui = SpreadsheetApp.getUi();
-  ui.createMenu('Яндекс Маркет')
-    .addItem('📋 Получить список кампаний', 'getCampaigns')
-    .addItem('🔄 Тестировать подключение', 'testConnection')
-    .addSeparator()
-    .addItem('📊 Выгрузить все цены', 'exportAllPrices')
-    .addItem('🎯 Выгрузить конкретные цены', 'exportSpecificPrices')
-    .addToUi();
+/***** TRIGGERS *****/
+// Создать/обновить единый почасовой триггер
+function createHourlyTrigger() {
+  // Чистим дубликаты
+  ScriptApp.getProjectTriggers().forEach(t => {
+    if (t.getHandlerFunction() === 'syncAllStocksHourly') ScriptApp.deleteTrigger(t);
+  });
+
+  ScriptApp.newTrigger('syncAllStocksHourly')
+    .timeBased()
+    .everyHours(1)   // раз в час
+    .create();
+
+  console.log('Триггер создан: раз в час -> syncAllStocksHourly');
+}
+
+// На всякий случай — функция удаления ВСЕХ триггеров этого проекта
+function deleteAllTriggers() {
+  ScriptApp.getProjectTriggers().forEach(t => ScriptApp.deleteTrigger(t));
+  console.log('Все триггеры удалены.');
 }
