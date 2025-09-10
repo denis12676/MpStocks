@@ -1363,6 +1363,11 @@ function writeWBPricesToSheetT(prices, storeName) {
   const headerRow = 1;
   const startCol = 20; // T
   const headers = ['Артикул поставщика', 'Цена, ₽', 'Старая цена, ₽', 'Мин. цена, ₽', 'Валюта'];
+  // Очистка диапазона T:X перед записью
+  const lastRowClear1 = sheet.getLastRow();
+  if (lastRowClear1 > 0) {
+    sheet.getRange(1, startCol, lastRowClear1, headers.length).clearContent();
+  }
   sheet.getRange(headerRow, startCol, 1, headers.length).setValues([headers]);
   sheet.getRange(headerRow, startCol, 1, headers.length).setFontWeight('bold').setBackground('#FFF3CD');
 
@@ -1475,6 +1480,11 @@ function writeWBPublicPricesToSheetT(priceMap, storeName, nmIdsOrder) {
   const headerRow = 1;
   const startCol = 20; // T
   const headers = ['nmId', 'Цена, ₽', 'Старая цена, ₽', 'Скидка, %', 'Валюта'];
+  // Очистка диапазона T:X перед записью
+  const lastRowClear2 = sheet.getLastRow();
+  if (lastRowClear2 > 0) {
+    sheet.getRange(1, startCol, lastRowClear2, headers.length).clearContent();
+  }
   sheet.getRange(headerRow, startCol, 1, headers.length).setValues([headers]);
   sheet.getRange(headerRow, startCol, 1, headers.length).setFontWeight('bold').setBackground('#FFF3CD');
 
