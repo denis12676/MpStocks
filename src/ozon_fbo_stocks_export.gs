@@ -1800,7 +1800,14 @@ function exportAllStoresPricesDetailed() {
 
   const msg = `Готово. Магазинов: ${processed}/${stores.length}. Всего позиций: ${totalItems}.` + (errors.length ? ('\nОшибки:\n- ' + errors.join('\n- ')) : '');
   console.log(msg);
-  ui.alert('Выгрузка детальных цен (все магазины)', msg, ui.ButtonSet.OK);
+  
+  // UI alert только если запущено вручную (не из триггера)
+  try {
+    ui.alert('Выгрузка детальных цен (все магазины)', msg, ui.ButtonSet.OK);
+  } catch (e) {
+    // Игнорируем ошибки UI в триггерах
+    console.log('UI alert пропущен (запуск из триггера)');
+  }
 }
 
 /**
