@@ -128,6 +128,7 @@ function onOpen() {
     .addItem('📊 Выгрузить остатки (все магазины)', 'exportAllStoresStocks')
     .addItem('📈 Выгрузить цены (активный магазин)', 'exportOzonPrices')
     .addItem('📊 Выгрузить детальные цены (все товары)', 'exportOzonPricesDetailed')
+    .addItem('📊 Выгрузить детальные цены (все магазины)', 'exportAllStoresPricesDetailed')
     .addItem('🚀 Тест v4 API с пагинацией', 'testV4Pagination')
     .addSeparator()
     .addSubMenu(ui.createMenu('🏪 Управление магазинами')
