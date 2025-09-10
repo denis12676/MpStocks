@@ -1492,7 +1492,11 @@ function writeWBPublicPricesToSheetT(priceMap, storeName, nmIdsOrder) {
   sheet.getRange(headerRow, startCol, 1, headers.length).setValues([headers]);
   sheet.getRange(headerRow, startCol, 1, headers.length).setFontWeight('bold').setBackground('#FFF3CD');
 
-  if (!priceMap || priceMap.size === 0) return;
+  if (!priceMap || priceMap.size === 0) {
+    // Нет цен — но обновим отметку времени, чтобы видеть факт запуска
+    sheet.getRange(3, startCol).setValue('Цены WB (public) обновлены: ' + new Date().toLocaleString('ru-RU'));
+    return;
+  }
 
   const rows = [];
   // пишем в порядке nmIds из колонки P
