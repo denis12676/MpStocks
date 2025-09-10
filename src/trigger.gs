@@ -121,3 +121,60 @@ function deleteAllTriggers() {
   ScriptApp.getProjectTriggers().forEach(t => ScriptApp.deleteTrigger(t));
   console.log('Все триггеры удалены.');
 }
+
+/*** PRICES: hourly sync for Ozon + WB ***/
+function syncAllPricesHourly() {
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(10000)) {
+    console.warn('Запуск цен пропущен: прошлый ещё выполняется.');
+    return;
+  }
+
+  const started = new Date();
+  const props = PropertiesService.getScriptProperties();
+  props.setProperty('prices.lastRunStartedAt', started.toISOString());
+
+  const results = [];
+  try {
+    // Ozon: детальные цены по всем магазинам
+    results.push(runStep('OZON_PRICES', exportAllStoresPricesDetailed));
+    // Wildberries: цены по всем магазинам
+    results.push(runStep('WB_PRICES', exportAllWBStoresPrices));
+  } finally {
+    lock.releaseLock();
+    props.setProperty('prices.lastRunFinishedAt', new Date().toISOString());
+  }
+
+  const durationSec = Math.round((Date.now() - started.getTime()) / 1000);
+  const failed = results.filter(r => !r.ok);
+  console.log('syncAllPrices summary:', JSON.stringify({ durationSec, results }, null, 2));
+
+  if (failed.length) {
+    const msg = [
+      `Ошибки при выгрузке цен ( ${durationSec}s ):`,
+      ...failed.map(f => `• ${f.name}: ${f.error}`)
+    ].join('\n');
+    notify(msg);
+  }
+}
+
+// Создать/обновить почасовой триггер для цен
+function createHourlyPricesTrigger() {
+  // Чистим дубликаты этого обработчика
+  ScriptApp.getProjectTriggers().forEach(t => {
+    if (t.getHandlerFunction() === 'syncAllPricesHourly') ScriptApp.deleteTrigger(t);
+  });
+
+  ScriptApp.newTrigger('syncAllPricesHourly')
+    .timeBased()
+    .everyHours(1)
+    .create();
+
+  console.log('Триггер создан: раз в час -> syncAllPricesHourly');
+}
+
+// Удобный хелпер: создать оба триггера (остатки и цены)
+function createAllHourlyTriggers() {
+  createHourlyTrigger();
+  createHourlyPricesTrigger();
+}
