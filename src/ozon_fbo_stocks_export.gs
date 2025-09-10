@@ -2461,7 +2461,11 @@ function exportAllStoresStocks() {
     
     console.log(`Выгрузка со всех магазинов завершена! Всего обработано товаров: ${totalProcessed}`);
     
-    SpreadsheetApp.getUi().alert('Выгрузка завершена', `Обработано ${stores.length} магазинов, всего товаров: ${totalProcessed}`, SpreadsheetApp.getUi().ButtonSet.OK);
+    try {
+      SpreadsheetApp.getUi().alert('Выгрузка завершена', `Обработано ${stores.length} магазинов, всего товаров: ${totalProcessed}`, SpreadsheetApp.getUi().ButtonSet.OK);
+    } catch (e) {
+      console.log('UI alert пропущен (запуск из триггера)');
+    }
     
   } catch (error) {
     console.error('Ошибка при выгрузке со всех магазинов:', error);
