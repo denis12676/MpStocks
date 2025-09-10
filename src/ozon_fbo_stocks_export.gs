@@ -2006,9 +2006,9 @@ function writePricesToSheetT(prices) {
   let sheet = spreadsheet.getSheetByName(sheetName) || spreadsheet.insertSheet(sheetName);
 
   // Очищаем диапазон T:BB перед записью новых данных
-  const lastRow = sheet.getLastRow() || 1000;
-  if (lastRow > 0) {
-    sheet.getRange(1, 20, lastRow, 29).clearContent(); // T:BB (20-48 колонки)
+  const maxRow = sheet.getLastRow() || 1000;
+  if (maxRow > 0) {
+    sheet.getRange(1, 20, maxRow, 29).clearContent(); // T:BB (20-48 колонки)
   }
 
   // Обновляем заголовки T:Z (или дальше), не трогаем A:S
