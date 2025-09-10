@@ -1233,6 +1233,59 @@ function exportWBPrices() {
 }
 
 /**
+ * Выгружает цены WB для всех магазинов.
+ * Логика:
+ * - Если на листе магазина есть nmId в P2:P — используем публичный API и записываем через writeWBPublicPricesToSheetT
+ * - Иначе, если задан API_KEY магазина — используем Supplier API и writeWBPricesToSheetT
+ */
+function exportAllWBStoresPrices() {
+  const stores = getWBStoresList();
+  if (!Array.isArray(stores) || stores.length === 0) {
+    throw new Error('Список WB магазинов пуст. Добавьте WB магазины.');
+  }
+
+  const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  const ui = SpreadsheetApp.getUi();
+
+  let processed = 0;
+  const errors = [];
+
+  for (const store of stores) {
+    try {
+      const storeName = store.name || 'WB Магазин';
+      const sheetName = sanitizeSheetName(storeName);
+      const sheet = spreadsheet.getSheetByName(sheetName) || spreadsheet.insertSheet(sheetName);
+
+      const nmIds = readColumnValues_(sheet, 2, 16); // P2:P
+      if (nmIds.length > 0) {
+        const publicPrices = fetchWBPublicPricesByNmIds(nmIds);
+        writeWBPublicPricesToSheetT(publicPrices, storeName, nmIds);
+        processed++;
+        Utilities.sleep(200);
+        continue;
+      }
+
+      const apiKey = store.api_key || store.apiKey || '';
+      if (apiKey) {
+        const prices = fetchWBPrices(apiKey);
+        writeWBPricesToSheetT(prices, storeName);
+        processed++;
+        Utilities.sleep(200);
+        continue;
+      }
+
+      errors.push(`Магазин ${storeName}: нет nmId в P и не задан API ключ`);
+    } catch (e) {
+      errors.push(String(e));
+    }
+  }
+
+  const msg = `Готово. Обработано магазинов: ${processed}/${stores.length}.` + (errors.length ? ('\nОшибки:\n- ' + errors.join('\n- ')) : '');
+  console.log(msg);
+  ui.alert('Выгрузка цен WB (все магазины)', msg, ui.ButtonSet.OK);
+}
+
+/**
  * Получает список цен из WB API. Спекуляция: основной путь — /public/api/v1/info,
  * фоллбек — /public/api/v1/prices (если доступен у аккаунта).
  */
