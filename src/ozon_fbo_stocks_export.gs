@@ -2400,7 +2400,11 @@ function exportAllStoresStocks() {
     const stores = getStoresList();
     
     if (stores.length === 0) {
-      SpreadsheetApp.getUi().alert('Ошибка', 'Нет добавленных магазинов!', SpreadsheetApp.getUi().ButtonSet.OK);
+      try {
+        SpreadsheetApp.getUi().alert('Ошибка', 'Нет добавленных магазинов!', SpreadsheetApp.getUi().ButtonSet.OK);
+      } catch (e) {
+        console.log('UI alert пропущен (запуск из триггера)');
+      }
       return;
     }
     
