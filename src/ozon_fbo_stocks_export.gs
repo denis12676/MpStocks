@@ -1286,7 +1286,13 @@ function exportAllWBStoresPrices() {
     // Позволим внешнему раннеру (runStep) пометить шаг как упавший и отправить уведомление
     throw new Error(msg);
   } else {
-    ui.alert('Выгрузка цен WB (все магазины)', msg, ui.ButtonSet.OK);
+    // UI alert только если запущено вручную (не из триггера)
+    try {
+      ui.alert('Выгрузка цен WB (все магазины)', msg, ui.ButtonSet.OK);
+    } catch (e) {
+      // Игнорируем ошибки UI в триггерах
+      console.log('UI alert пропущен (запуск из триггера)');
+    }
   }
 }
 
