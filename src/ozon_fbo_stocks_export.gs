@@ -2005,6 +2005,12 @@ function writePricesToSheetT(prices) {
   const sheetName = sanitizeSheetName(config.STORE_NAME || 'Неизвестный магазин');
   let sheet = spreadsheet.getSheetByName(sheetName) || spreadsheet.insertSheet(sheetName);
 
+  // Очищаем диапазон T:BB перед записью новых данных
+  const lastRow = sheet.getLastRow() || 1000;
+  if (lastRow > 0) {
+    sheet.getRange(1, 20, lastRow, 29).clearContent(); // T:BB (20-48 колонки)
+  }
+
   // Обновляем заголовки T:Z (или дальше), не трогаем A:S
   const headerRow = 1;
   const startCol = 20; // T
