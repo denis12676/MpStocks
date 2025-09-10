@@ -1282,7 +1282,12 @@ function exportAllWBStoresPrices() {
 
   const msg = `Готово. Обработано магазинов: ${processed}/${stores.length}.` + (errors.length ? ('\nОшибки:\n- ' + errors.join('\n- ')) : '');
   console.log(msg);
-  ui.alert('Выгрузка цен WB (все магазины)', msg, ui.ButtonSet.OK);
+  if (errors.length) {
+    // Позволим внешнему раннеру (runStep) пометить шаг как упавший и отправить уведомление
+    throw new Error(msg);
+  } else {
+    ui.alert('Выгрузка цен WB (все магазины)', msg, ui.ButtonSet.OK);
+  }
 }
 
 /**
