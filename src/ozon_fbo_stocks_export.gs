@@ -1954,10 +1954,10 @@ function writeOzonPricesDetailed(sheet, items) {
     ];
   });
 
-  // Очищаем только диапазон T:AY (столбцы 20-51)
+  // Очищаем диапазон T:BB (столбцы 20-54)
   const lastRow = sheet.getLastRow();
   if (lastRow > 0) {
-    sheet.getRange(1, startCol, lastRow, header.length).clearContent();
+    sheet.getRange(1, startCol, lastRow, 35).clearContent(); // T:BB (20-54 колонки)
   }
   
   // Записываем заголовки начиная со столбца T
