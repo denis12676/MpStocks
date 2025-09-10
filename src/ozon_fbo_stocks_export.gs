@@ -4431,7 +4431,11 @@ function exportAllYandexStoresStocks() {
     
     console.log(`Выгрузка со всех Яндекс Маркет магазинов завершена! Всего обработано товаров: ${totalProcessed}`);
     
-    SpreadsheetApp.getUi().alert('Выгрузка завершена', `Обработано ${stores.length} Яндекс Маркет магазинов, всего товаров: ${totalProcessed}`, SpreadsheetApp.getUi().ButtonSet.OK);
+    try {
+      SpreadsheetApp.getUi().alert('Выгрузка завершена', `Обработано ${stores.length} Яндекс Маркет магазинов, всего товаров: ${totalProcessed}`, SpreadsheetApp.getUi().ButtonSet.OK);
+    } catch (e) {
+      console.log('UI alert пропущен (запуск из триггера)');
+    }
     
   } catch (error) {
     console.error('Ошибка при выгрузке со всех Яндекс Маркет магазинов:', error);
