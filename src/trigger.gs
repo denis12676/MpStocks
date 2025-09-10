@@ -122,6 +122,64 @@ function deleteAllTriggers() {
   console.log('Все триггеры удалены.');
 }
 
+/*** CHAINED: stocks then prices (hourly) ***/
+function syncStocksThenPricesHourly() {
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(10000)) {
+    console.warn('Запуск (цепочка) пропущен: прошлый ещё выполняется.');
+    return;
+  }
+
+  const started = new Date();
+  const props = PropertiesService.getScriptProperties();
+  props.setProperty('chained.lastRunStartedAt', started.toISOString());
+
+  const results = [];
+  try {
+    // 1) Остатки (как в syncAllStocksHourly)
+    results.push(runStep('WB_STOCKS', exportAllWBStoresStocksStatisticsAPI));
+    results.push(runStep('YM_STOCKS', exportAllYandexStoresStocks));
+    results.push(runStep('OZON_STOCKS', exportAllStoresStocks));
+
+    // 2) Цены (сразу после остатков)
+    results.push(runStep('OZON_PRICES', exportAllStoresPricesDetailed));
+    results.push(runStep('WB_PRICES', exportAllWBStoresPrices));
+  } finally {
+    lock.releaseLock();
+    props.setProperty('chained.lastRunFinishedAt', new Date().toISOString());
+  }
+
+  const durationSec = Math.round((Date.now() - started.getTime()) / 1000);
+  const failed = results.filter(r => !r.ok);
+  console.log('syncStocksThenPrices summary:', JSON.stringify({ durationSec, results }, null, 2));
+
+  if (failed.length) {
+    const msg = [
+      `Ошибки при цепочном запуске ( ${durationSec}s ):`,
+      ...failed.map(f => `• ${f.name}: ${f.error}`)
+    ].join('\n');
+    notify(msg);
+  }
+}
+
+// Создать/обновить почасовой триггер для цепочки (остатки -> цены)
+function createHourlyChainedTrigger() {
+  // Удаляем старые отдельные триггеры, чтобы не было дублей
+  ScriptApp.getProjectTriggers().forEach(t => {
+    const h = t.getHandlerFunction();
+    if (h === 'syncAllStocksHourly' || h === 'syncAllPricesHourly' || h === 'syncStocksThenPricesHourly') {
+      ScriptApp.deleteTrigger(t);
+    }
+  });
+
+  ScriptApp.newTrigger('syncStocksThenPricesHourly')
+    .timeBased()
+    .everyHours(1)
+    .create();
+
+  console.log('Триггер создан: раз в час -> syncStocksThenPricesHourly (остатки -> цены)');
+}
+
 /*** PRICES: hourly sync for Ozon + WB ***/
 function syncAllPricesHourly() {
   const lock = LockService.getScriptLock();
