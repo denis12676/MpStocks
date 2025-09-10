@@ -1376,9 +1376,8 @@ function writeWBPricesToSheetT(prices, storeName) {
   sheet.getRange(headerRow, startCol, 1, headers.length).setValues([headers]);
   sheet.getRange(headerRow, startCol, 1, headers.length).setFontWeight('bold').setBackground('#FFF3CD');
 
-  if (!prices || prices.length === 0) {
-    return;
-  }
+  // Даже если данных нет — обновим отметку времени ниже
+  if (!prices) prices = [];
 
   // map по supplierArticle
   const bySa = {};
@@ -2032,6 +2031,8 @@ function writePricesToSheetT(prices) {
 
   const lastRow = sheet.getLastRow();
   if (lastRow < 2) {
+    // нет строк с данными — только шапка и отметка времени
+    sheet.getRange(3, startCol).setValue('Цены WB обновлены: ' + new Date().toLocaleString('ru-RU'));
     return;
   }
 
@@ -2057,7 +2058,7 @@ function writePricesToSheetT(prices) {
 
   sheet.getRange(2, startCol, rowsToWrite.length, headers.length).setValues(rowsToWrite);
   sheet.autoResizeColumns(startCol, headers.length);
-  sheet.getRange(rowsToWrite.length + 3, startCol).setValue('Цены обновлены: ' + new Date().toLocaleString('ru-RU'));
+  sheet.getRange(rowsToWrite.length + 3, startCol).setValue('Цены WB обновлены: ' + new Date().toLocaleString('ru-RU'));
 }
 
 /**
