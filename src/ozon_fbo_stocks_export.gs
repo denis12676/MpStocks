@@ -4381,7 +4381,11 @@ function exportAllYandexStoresStocks() {
     const stores = getYandexStoresList();
     
     if (stores.length === 0) {
-      SpreadsheetApp.getUi().alert('Ошибка', 'Нет добавленных Яндекс Маркет магазинов!', SpreadsheetApp.getUi().ButtonSet.OK);
+      try {
+        SpreadsheetApp.getUi().alert('Ошибка', 'Нет добавленных Яндекс Маркет магазинов!', SpreadsheetApp.getUi().ButtonSet.OK);
+      } catch (e) {
+        console.log('UI alert пропущен (запуск из триггера)');
+      }
       return;
     }
     
