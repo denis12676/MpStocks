@@ -1686,6 +1686,52 @@ function exportOzonPricesDetailed() {
 }
 
 /**
+ * Выгружает детальные цены для всех Ozon магазинов в их листы
+ */
+function exportAllStoresPricesDetailed() {
+  const stores = getStoresList();
+  if (!Array.isArray(stores) || stores.length === 0) {
+    throw new Error('Список магазинов пуст. Добавьте магазины в \'🏪 Управление магазинами\'.');
+  }
+
+  const ui = SpreadsheetApp.getUi();
+  const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+
+  let processed = 0;
+  let totalItems = 0;
+  const errors = [];
+
+  for (const store of stores) {
+    const clientId = store.clientId;
+    const apiKey = store.apiKey;
+    const storeName = store.name || 'Ozon Store';
+
+    if (!clientId || !apiKey) {
+      errors.push(`Магазин ${storeName}: не заданы clientId/apiKey`);
+      continue;
+    }
+
+    try {
+      const items = fetchAllOzonPricesV5(clientId, apiKey);
+      totalItems += items.length;
+
+      const sheetName = sanitizeSheetName(storeName);
+      const sheet = spreadsheet.getSheetByName(sheetName) || spreadsheet.insertSheet(sheetName);
+      writeOzonPricesDetailed(sheet, items);
+      processed++;
+
+      Utilities.sleep(300);
+    } catch (e) {
+      errors.push(`Магазин ${storeName}: ${String(e)}`);
+    }
+  }
+
+  const msg = `Готово. Магазинов: ${processed}/${stores.length}. Всего позиций: ${totalItems}.` + (errors.length ? ('\nОшибки:\n- ' + errors.join('\n- ')) : '');
+  console.log(msg);
+  ui.alert('Выгрузка детальных цен (все магазины)', msg, ui.ButtonSet.OK);
+}
+
+/**
  * Получает все цены через v5 API с пагинацией
  */
 function fetchAllOzonPricesV5(clientId, apiKey) {
